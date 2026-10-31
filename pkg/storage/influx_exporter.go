@@ -82,9 +82,20 @@ func (exp *InfluxExporter) WritePacket(meta *cbridge.PacketMeta) {
 		svc = "unknown"
 	}
 
-	line := fmt.Sprintf("network_traffic,src_ip=%s,dst_ip=%s,protocol=%s,service=%s,is_broadcast=%t bytes=%di,payload_bytes=%di,count=1i %d",
+	srcCountry := meta.SrcCountry
+	if srcCountry == "" {
+		srcCountry = "??"
+	}
+	dstCountry := meta.DstCountry
+	if dstCountry == "" {
+		dstCountry = "??"
+	}
+
+	line := fmt.Sprintf("network_traffic,src_ip=%s,dst_ip=%s,src_country=%s,dst_country=%s,protocol=%s,service=%s,is_broadcast=%t bytes=%di,payload_bytes=%di,count=1i %d",
 		escapeTag(meta.SrcIP),
 		escapeTag(meta.DstIP),
+		escapeTag(srcCountry),
+		escapeTag(dstCountry),
 		escapeTag(meta.Protocol),
 		escapeTag(svc),
 		meta.IsBroadcast,
@@ -119,12 +130,23 @@ func (exp *InfluxExporter) WriteAlerts(alerts []cbridge.Alert) {
 	defer exp.mu.Unlock()
 
 	for _, a := range alerts {
+		srcCountry := a.SrcCountry
+		if srcCountry == "" {
+			srcCountry = "??"
+		}
+		dstCountry := a.DstCountry
+		if dstCountry == "" {
+			dstCountry = "??"
+		}
+
 		escapedMsg := strings.ReplaceAll(a.Message, "\"", "\\\"")
-		line := fmt.Sprintf("ids_alerts,severity=%s,alert_type=%s,src_ip=%s,dst_ip=%s,protocol=%s message=\"%s\",count=1i %d",
+		line := fmt.Sprintf("ids_alerts,severity=%s,alert_type=%s,src_ip=%s,src_country=%s,dst_ip=%s,dst_country=%s,protocol=%s message=\"%s\",count=1i %d",
 			escapeTag(a.Severity),
 			escapeTag(a.AlertType),
 			escapeTag(a.SrcIP),
+			escapeTag(srcCountry),
 			escapeTag(a.DstIP),
+			escapeTag(dstCountry),
 			escapeTag(a.Protocol),
 			escapedMsg,
 			a.Timestamp.UnixNano(),

@@ -41,6 +41,14 @@ type PacketMeta struct {
 	DNSQuery    string
 	DNSType     uint16
 	IsBroadcast bool
+
+	// GeoIP Enrichment
+	SrcCountry string
+	SrcFlag    string
+	DstCountry string
+	DstFlag    string
+	SrcOrg     string
+	DstOrg     string
 }
 
 type Alert struct {
@@ -54,6 +62,12 @@ type Alert struct {
 	DstPort   uint16
 	Protocol  string
 	Details   string
+
+	// GeoIP Enrichment
+	SrcCountry string
+	SrcFlag    string
+	DstCountry string
+	DstFlag    string
 }
 
 type Capture struct {

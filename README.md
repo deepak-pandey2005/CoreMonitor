@@ -68,6 +68,11 @@ flowchart TD
      - Standard `.pcap` files with automated time-based rotation.
      - Streaming CSV logs (`captures/traffic_*.csv` and `captures/alerts_*.csv`).
      - InfluxDB v2 line-protocol dispatcher with non-blocking resilience.
+   - **GeoIP & Country Mapping**:
+     - Fast zero-dependency offline CIDR-based resolver with memory caching.
+     - Differentiates LAN / RFC1918 traffic (`🏠 LAN`) from external public hosts.
+     - Maps public IPs to country codes, country names, organization/ASN, and regional indicator flag emojis (e.g. 🇺🇸, 🇩🇪, 🇮🇳, 🇬🇧, 🇫🇷, 🇯🇵).
+     - Enriches terminal TUI, packet details, CSV logs, and InfluxDB/Grafana metrics.
    - **Interactive Charmbracelet Bubbletea TUI**: Modern multi-tabbed terminal dashboard featuring:
     - `Tab` / `1-3`: Switch views between **Overview Dashboard**, **Live Packet Stream**, and **Security Alerts Log**.
     - `Space`: Instant **Pause / Resume** to inspect live packet bursts without losing your place.

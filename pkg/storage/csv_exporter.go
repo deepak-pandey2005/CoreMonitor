@@ -60,8 +60,8 @@ func (exp *CSVExporter) rotateFiles() error {
 
 	if !pktExists {
 		_ = exp.pktWriter.Write([]string{
-			"timestamp", "src_ip", "dst_ip", "src_port", "dst_port",
-			"protocol", "service", "packet_size", "payload_size",
+			"timestamp", "src_ip", "dst_ip", "src_country", "dst_country",
+			"src_port", "dst_port", "protocol", "service", "packet_size", "payload_size",
 			"tcp_flags", "dns_query", "dns_type", "src_mac", "dst_mac",
 		})
 		exp.pktWriter.Flush()
@@ -80,7 +80,7 @@ func (exp *CSVExporter) rotateFiles() error {
 	if !alertExists {
 		_ = exp.alertWriter.Write([]string{
 			"timestamp", "severity", "alert_type", "message",
-			"src_ip", "dst_ip", "src_port", "dst_port", "protocol", "details",
+			"src_ip", "src_country", "dst_ip", "dst_country", "src_port", "dst_port", "protocol", "details",
 		})
 		exp.alertWriter.Flush()
 	}
@@ -105,6 +105,8 @@ func (exp *CSVExporter) WritePacket(meta *cbridge.PacketMeta) {
 		meta.Timestamp.Format(time.RFC3339Nano),
 		meta.SrcIP,
 		meta.DstIP,
+		meta.SrcCountry,
+		meta.DstCountry,
 		strconv.Itoa(int(meta.SrcPort)),
 		strconv.Itoa(int(meta.DstPort)),
 		meta.Protocol,
@@ -139,7 +141,9 @@ func (exp *CSVExporter) WriteAlerts(alerts []cbridge.Alert) {
 			a.AlertType,
 			a.Message,
 			a.SrcIP,
+			a.SrcCountry,
 			a.DstIP,
+			a.DstCountry,
 			strconv.Itoa(int(a.SrcPort)),
 			strconv.Itoa(int(a.DstPort)),
 			a.Protocol,

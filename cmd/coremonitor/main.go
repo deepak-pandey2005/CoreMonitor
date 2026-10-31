@@ -154,7 +154,15 @@ func runPCAP(args []string) {
 	if len(stats.RecentAlerts) > 0 {
 		fmt.Println("🚨 Security Alerts Detected:")
 		for _, a := range stats.RecentAlerts {
-			fmt.Printf("  • [%s] %s (%s -> %s): %s\n", a.Severity, a.AlertType, a.SrcIP, a.DstIP, a.Message)
+			src := a.SrcIP
+			if a.SrcFlag != "" {
+				src = fmt.Sprintf("%s %s", a.SrcFlag, a.SrcIP)
+			}
+			dst := a.DstIP
+			if a.DstFlag != "" {
+				dst = fmt.Sprintf("%s %s", a.DstFlag, a.DstIP)
+			}
+			fmt.Printf("  • [%s] %s (%s -> %s): %s\n", a.Severity, a.AlertType, src, dst, a.Message)
 		}
 	}
 }

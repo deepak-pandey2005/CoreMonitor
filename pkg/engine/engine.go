@@ -6,6 +6,7 @@ import (
 
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/cbridge"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/config"
+	"github.com/deepak-pandey2005/CoreMonitor/pkg/geoip"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/storage"
 )
 
@@ -112,7 +113,23 @@ func (e *Engine) ProcessLoop() error {
 			return err
 		}
 
+		// GeoIP Enrichment
+		srcLoc := geoip.Lookup(meta.SrcIP)
+		dstLoc := geoip.Lookup(meta.DstIP)
+		meta.SrcCountry = srcLoc.CountryCode
+		meta.SrcFlag = srcLoc.Flag
+		meta.SrcOrg = srcLoc.Org
+		meta.DstCountry = dstLoc.CountryCode
+		meta.DstFlag = dstLoc.Flag
+		meta.DstOrg = dstLoc.Org
+
 		alerts := e.ids.Analyze(meta)
+		for i := range alerts {
+			alerts[i].SrcCountry = srcLoc.CountryCode
+			alerts[i].SrcFlag = srcLoc.Flag
+			alerts[i].DstCountry = dstLoc.CountryCode
+			alerts[i].DstFlag = dstLoc.Flag
+		}
 
 		// Exporters
 		e.csvExp.WritePacket(meta)

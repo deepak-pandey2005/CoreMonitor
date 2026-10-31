@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/engine"
+	"github.com/deepak-pandey2005/CoreMonitor/pkg/geoip"
 )
 
 // UI Theme Styles
@@ -150,16 +151,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				idx := len(m.cachedStats.RecentPackets) - 1 - m.packetCursor
 				if idx >= 0 && idx < len(m.cachedStats.RecentPackets) {
 					p := m.cachedStats.RecentPackets[idx]
-					m.detailContent = fmt.Sprintf("PACKET DETAILS:\n\nTimestamp:   %s\nSource:      %s:%d\nDestination: %s:%d\nProtocol:    %s\nService:     %s\nSize:        %d bytes\nPayload:     %d bytes\nTCP Flags:   %s\nDNS Query:   %s\nSrc MAC:     %s\nDst MAC:     %s\nBroadcast:   %t\n\n(Press ESC or Enter to close)",
-						p.Timestamp.Format(time.RFC3339Nano), p.SrcIP, p.SrcPort, p.DstIP, p.DstPort, p.Protocol, p.Service, p.PacketSize, p.PayloadSize, p.TCPFlagsStr, p.DNSQuery, p.SrcMAC, p.DstMAC, p.IsBroadcast)
+					m.detailContent = fmt.Sprintf("PACKET DETAILS:\n\nTimestamp:   %s\nSource:      %s %s:%d (%s - %s)\nDestination: %s %s:%d (%s - %s)\nProtocol:    %s\nService:     %s\nSize:        %d bytes\nPayload:     %d bytes\nTCP Flags:   %s\nDNS Query:   %s\nSrc MAC:     %s\nDst MAC:     %s\nBroadcast:   %t\n\n(Press ESC or Enter to close)",
+						p.Timestamp.Format(time.RFC3339Nano), p.SrcFlag, p.SrcIP, p.SrcPort, p.SrcCountry, p.SrcOrg,
+						p.DstFlag, p.DstIP, p.DstPort, p.DstCountry, p.DstOrg,
+						p.Protocol, p.Service, p.PacketSize, p.PayloadSize, p.TCPFlagsStr, p.DNSQuery, p.SrcMAC, p.DstMAC, p.IsBroadcast)
 					m.showDetail = true
 				}
 			} else if m.activeTab == 2 && len(m.cachedStats.RecentAlerts) > 0 {
 				idx := len(m.cachedStats.RecentAlerts) - 1 - m.alertCursor
 				if idx >= 0 && idx < len(m.cachedStats.RecentAlerts) {
 					a := m.cachedStats.RecentAlerts[idx]
-					m.detailContent = fmt.Sprintf("SECURITY ALERT DETAILS:\n\nSeverity:    %s\nAlert Type:  %s\nTimestamp:   %s\nSource IP:   %s:%d\nTarget IP:   %s:%d\nProtocol:    %s\nMessage:     %s\nDetails:     %s\n\n(Press ESC or Enter to close)",
-						a.Severity, a.AlertType, a.Timestamp.Format(time.RFC3339Nano), a.SrcIP, a.SrcPort, a.DstIP, a.DstPort, a.Protocol, a.Message, a.Details)
+					m.detailContent = fmt.Sprintf("SECURITY ALERT DETAILS:\n\nSeverity:    %s\nAlert Type:  %s\nTimestamp:   %s\nSource:      %s %s:%d (%s)\nTarget:      %s %s:%d (%s)\nProtocol:    %s\nMessage:     %s\nDetails:     %s\n\n(Press ESC or Enter to close)",
+						a.Severity, a.AlertType, a.Timestamp.Format(time.RFC3339Nano),
+						a.SrcFlag, a.SrcIP, a.SrcPort, a.SrcCountry,
+						a.DstFlag, a.DstIP, a.DstPort, a.DstCountry,
+						a.Protocol, a.Message, a.Details)
 					m.showDetail = true
 				}
 			}
@@ -291,11 +297,12 @@ func (m Model) renderOverview() string {
 
 	var talkerLines []string
 	for i := 0; i < 4 && i < len(talkers); i++ {
+		loc := geoip.Lookup(talkers[i].ip)
 		vol := fmt.Sprintf("%.1f KB", float64(talkers[i].bytes)/1024)
 		if talkers[i].bytes > 1024*1024 {
 			vol = fmt.Sprintf("%.2f MB", float64(talkers[i].bytes)/(1024*1024))
 		}
-		talkerLines = append(talkerLines, fmt.Sprintf("%-16s %s", talkers[i].ip, vol))
+		talkerLines = append(talkerLines, fmt.Sprintf("%s %-15s %s", loc.Flag, talkers[i].ip, vol))
 	}
 	if len(talkerLines) == 0 {
 		talkerLines = append(talkerLines, "Waiting for traffic...")
@@ -353,13 +360,13 @@ func (m Model) renderPackets() string {
 		}
 
 		tStr := p.Timestamp.Format("15:04:05")
-		src := fmt.Sprintf("%s:%d", p.SrcIP, p.SrcPort)
+		src := fmt.Sprintf("%s %s:%d", p.SrcFlag, p.SrcIP, p.SrcPort)
 		if p.SrcPort == 0 {
-			src = p.SrcIP
+			src = fmt.Sprintf("%s %s", p.SrcFlag, p.SrcIP)
 		}
-		dst := fmt.Sprintf("%s:%d", p.DstIP, p.DstPort)
+		dst := fmt.Sprintf("%s %s:%d", p.DstFlag, p.DstIP, p.DstPort)
 		if p.DstPort == 0 {
-			dst = p.DstIP
+			dst = fmt.Sprintf("%s %s", p.DstFlag, p.DstIP)
 		}
 		info := p.TCPFlagsStr
 		if p.DNSQuery != "" {
@@ -397,7 +404,7 @@ func (m Model) renderAlerts() string {
 
 		sev := a.Severity
 		tStr := a.Timestamp.Format("15:04:05")
-		srcDst := fmt.Sprintf("%s -> %s", a.SrcIP, a.DstIP)
+		srcDst := fmt.Sprintf("%s %s -> %s %s", a.SrcFlag, a.SrcIP, a.DstFlag, a.DstIP)
 
 		row := fmt.Sprintf("%s%-10s  %-10s  %-20s  %-35s  %s",
 			cursor, tStr, sev, a.AlertType, srcDst, a.Message)
