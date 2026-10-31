@@ -1,0 +1,36 @@
+# CoreMonitor Configuration File
+
+network:
+  interface: "wlan0"       # Active Wi-Fi or Ethernet interface
+  bpf_filter: ""          # Optional Berkeley Packet Filter (e.g., "tcp", "not port 22")
+  promiscuous: true
+  snaplen: 65535
+
+storage:
+  pcap_enabled: true      # Export raw traffic captures into standard .pcap files
+  pcap_dir: "captures"
+  pcap_rotate_seconds: 3600
+  csv_enabled: true       # Export parsed packet metadata to CSV files
+  csv_dir: "captures"
+  csv_rotate_seconds: 3600
+
+influxdb:
+  enabled: true           # Export metrics to InfluxDB for Grafana visualization
+  url: "http://localhost:8086"
+  token: "coremonitor-super-secret-auth-token"
+  org: "coremonitor-org"
+  bucket: "network_metrics"
+  batch_size: 50
+  flush_interval_seconds: 2
+
+ids:
+  enabled: true
+  port_scan_threshold: 15          # Max distinct ports hit within window before alert
+  port_scan_window_seconds: 10
+  syn_flood_threshold: 100         # SYN packets per second from a single host
+  syn_flood_window_seconds: 2
+  bandwidth_spike_bytes_per_sec: 10000000  # 10 MB/s per IP
+  bandwidth_window_seconds: 2
+  dns_tunnel_anomaly_length: 60    # Flag DNS queries with subdomain length exceeding this
+
+live_dashboard: true     # Render real-time terminal UI with statistics and alerts

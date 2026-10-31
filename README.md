@@ -1,9 +1,174 @@
 # CoreMonitor 🛡️
 
-A high-performance Network Traffic Analyzer and Intrusion Detection System (IDS).
+**CoreMonitor** is a high-performance Network Traffic Analyzer and Intrusion Detection System (IDS). It features a **pure C low-level datapath engine** for line-speed packet sniffing, protocol parsing, and stateful intrusion detection, paired with a **Go upper orchestration layer** for multi-format storage, real-time terminal UI, and InfluxDB/Grafana visualization.
 
-## Architecture
+---
 
-- **Core Engine (C)**: High-speed packet capture using `libpcap`, zero-copy packet parser, and stateful IDS detection engine.
-- **Upper Layer (Go)**: Modern orchestration layer connecting to the C core via CGO for real-time visualization, storage management (PCAP/CSV), and InfluxDB/Grafana metrics.
-- **Tooling & Simulation (Python / uv)**: Traffic generator for testing and simulating security events.
+## 🏗️ Architecture
+
+```mermaid
+flowchart TD
+    subgraph CaptureLayer["Datapath & Packet Capture (Pure C)"]
+        NIC["Wi-Fi / Ethernet Interface (libpcap)"]
+        PCAPIn["Offline .pcap Files (pcap_open_offline)"]
+        CParser["C Protocol Parser (Ethernet, IPv4/6, TCP, UDP, ICMP, DNS)"]
+        CIDS["C Stateful IDS Engine (Sliding Windows, Scans, Floods, Threats)"]
+        NIC --> CParser
+        PCAPIn --> CParser
+        CParser --> CIDS
+    end
+
+    subgraph Bridge["Zero-Copy Bridge"]
+        CGO["CGO Interface (pkg/cbridge)"]
+        CIDS --> CGO
+        CParser --> CGO
+    end
+
+    subgraph GoOrchestration["Upper Orchestration Layer (Go)"]
+        GoEngine["CoreMonitor Engine (pkg/engine)"]
+        TUI["Terminal Live Dashboard (pkg/tui)"]
+        CSVExp["CSV Streaming Exporter (traffic & alerts)"]
+        PCAPExp["PCAP File Exporter (Wireshark Forensics)"]
+        InfluxExp["InfluxDB v2 Time-Series Client"]
+
+        CGO --> GoEngine
+        GoEngine --> TUI
+        GoEngine --> CSVExp
+        GoEngine --> PCAPExp
+        GoEngine --> InfluxExp
+    end
+
+    subgraph Visualization["Visualization & Monitoring"]
+        Grafana["Grafana Security & Bandwidth Dashboard"]
+        Wireshark["Wireshark Offline Inspection"]
+        InfluxExp --> Grafana
+        PCAPExp --> Wireshark
+    end
+```
+
+---
+
+## 🌟 Key Features
+
+1. **High-Performance C Datapath Core (`c_core/`)**
+   - Direct packet ingestion using `libpcap` with support for custom Berkeley Packet Filters (BPF).
+   - Fast protocol decoding: Ethernet, ARP, IPv4, IPv6, TCP (flags bitmask decoding), UDP, ICMP, and DNS query domain parsing.
+   - Stateful IDS rules evaluated directly in C:
+     - **SYN Port Scans**: Sliding window tracking distinct probed ports per host.
+     - **Stealth Scans**: Flags Xmas (`FIN+PSH+URG`), Null (0 flags), and FIN scans.
+     - **DoS / Floods**: TCP SYN flood and ICMP ping flood detection.
+     - **Bandwidth Spikes**: Instantaneous byte rate threshold alerts.
+     - **Suspicious Services**: Flags cleartext credentials (Telnet port 23, FTP port 21) and known attacker listener ports (Metasploit 4444, Back Orifice 31337).
+     - **DNS Tunneling**: Identifies suspiciously long domain queries (> 60 characters).
+     - **Threat Intelligence**: Immediate matching against blacklisted IP feeds with alert cooldown suppression.
+
+2. **Modern Go Upper Layer (`pkg/`, `cmd/`)**
+   - High-throughput zero-copy CGO bridge.
+   - **Multi-Format Storage**:
+     - Standard `.pcap` files with automated time-based rotation.
+     - Streaming CSV logs (`captures/traffic_*.csv` and `captures/alerts_*.csv`).
+     - InfluxDB v2 line-protocol dispatcher with non-blocking resilience.
+   - **Interactive Terminal UI**: ANSI colored live dashboard showing bandwidth rates, top talkers, protocol breakdown, and real-time security alerts.
+
+3. **Grafana & InfluxDB Visualization (`grafana/`)**
+   - Pre-provisioned InfluxDB datasource and Grafana dashboard (`docker-compose.yml`).
+   - Visual panels: throughput over time, protocol distribution donut chart, top talkers bar chart, DNS query logs, and live security events table.
+
+4. **Python Attack & Traffic Simulation (`scripts/` via `uv`)**
+   - Synthetic traffic generator using Scapy to simulate benign web flows alongside multi-vector attacks.
+
+---
+
+## 🚀 Quick Start
+
+### 1. Build the Entire System
+
+Requirements: `gcc`, `make`, `libpcap-dev`, `go` (>= 1.20).
+
+```bash
+git clone https://github.com/deepak-pandey2005/CoreMonitor.git
+cd CoreMonitor
+
+make all
+```
+
+This compiles:
+- `c_core/libcmonitor.a` (C core library)
+- `bin/coremonitor` (Go application binary)
+
+### 2. Network Sniffing Permissions (Linux)
+
+To capture packets on live interfaces without running everything as root:
+
+```bash
+sudo ./scripts/setup_permissions.sh
+```
+
+---
+
+## 💻 Usage
+
+### Live Network Capture & IDS
+
+Start monitoring live traffic on your Wi-Fi interface (`wlan0`):
+
+```bash
+./bin/coremonitor live -i wlan0
+```
+
+To run in headless daemon mode (plain logging without the interactive TUI):
+```bash
+./bin/coremonitor live -i wlan0 --no-tui
+```
+
+Apply a custom BPF filter (e.g. monitor only HTTP/HTTPS traffic):
+```bash
+./bin/coremonitor live -i wlan0 -b "tcp port 80 or tcp port 443"
+```
+
+### Offline PCAP Forensics
+
+Deeply inspect an existing `.pcap` capture file:
+
+```bash
+./bin/coremonitor pcap tests/fixtures/attack_sample.pcap --no-influx
+```
+
+### Synthetic Traffic & Attack Simulation
+
+Generate synthetic benign traffic and attacks (SYN port scans, Xmas scans, Null scans, Telnet, Metasploit, DNS tunneling, ICMP floods) using `uv`:
+
+```bash
+uv sync
+uv run scripts/simulate_traffic.py -o captures/sim_attack.pcap
+./bin/coremonitor pcap captures/sim_attack.pcap --no-influx
+```
+
+---
+
+## 📊 InfluxDB & Grafana Stack
+
+Launch InfluxDB and Grafana with one command:
+
+```bash
+docker compose up -d
+```
+
+- **Grafana**: Open [http://localhost:3000](http://localhost:3000) (Login: `admin` / `admin`). The **CoreMonitor Network Security & Bandwidth Dashboard** is pre-loaded and ready.
+- **InfluxDB**: [http://localhost:8086](http://localhost:8086) (Org: `coremonitor-org`, Bucket: `network_metrics`).
+
+---
+
+## 🧪 Testing
+
+Run both the C unit tests and the Go integration tests:
+
+```bash
+make test
+```
+
+---
+
+## 📄 License
+
+MIT License. Designed and developed for open-source defensive network security and performance monitoring.

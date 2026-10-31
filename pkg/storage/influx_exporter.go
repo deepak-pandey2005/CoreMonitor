@@ -162,6 +162,9 @@ func (exp *InfluxExporter) Flush() {
 }
 
 func (exp *InfluxExporter) Close() {
-	close(exp.stopChan)
+	if exp.stopChan != nil {
+		close(exp.stopChan)
+		exp.stopChan = nil
+	}
 	exp.Flush()
 }

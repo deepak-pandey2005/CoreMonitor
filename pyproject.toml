@@ -1,0 +1,8 @@
+[project]
+name = "coremonitor-scripts"
+version = "0.1.0"
+description = "Traffic simulation scripts for CoreMonitor"
+requires-python = ">=3.9"
+dependencies = [
+    "scapy>=2.5.0",
+]

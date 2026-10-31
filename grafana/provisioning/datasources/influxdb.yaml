@@ -1,0 +1,16 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB_CoreMonitor
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    jsonData:
+      version: Flux
+      organization: coremonitor-org
+      defaultBucket: network_metrics
+      tlsSkipVerify: true
+    secureJsonData:
+      token: coremonitor-super-secret-auth-token
+    isDefault: true
+    editable: true
