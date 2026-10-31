@@ -54,6 +54,7 @@ flowchart TD
    - Direct packet ingestion using `libpcap` with support for custom Berkeley Packet Filters (BPF).
    - Fast protocol decoding: Ethernet, ARP, IPv4, IPv6, TCP (flags bitmask decoding), UDP, ICMP, and DNS query domain parsing.
    - **TLS Client Hello SNI Extraction**: Parses the unencrypted Server Name Indication (SNI) extension from TLS handshakes directly on the wire, revealing visited domain names (e.g. `github.com`, `discord.com`) inside encrypted HTTPS traffic.
+   - **Cleartext HTTP Dissection**: Zero-copy dissection of cleartext HTTP requests (methods: `GET`, `POST`, `PUT`, `DELETE`, etc.), request URIs, `Host`, and `User-Agent` headers.
    - Stateful IDS rules evaluated directly in C:
      - **SYN Port Scans**: Sliding window tracking distinct probed ports per host.
      - **Stealth Scans**: Flags Xmas (`FIN+PSH+URG`), Null (0 flags), and FIN scans.

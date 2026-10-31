@@ -9,6 +9,7 @@
 #include <netinet/udp.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 typedef struct {
     uint16_t port;
@@ -143,6 +144,91 @@ static void parse_tls_sni(const uint8_t *data, size_t len, char *out_sni, size_t
     }
 }
 
+static void parse_http_request(const uint8_t *data, size_t len,
+                               char *out_method, size_t max_method,
+                               char *out_uri, size_t max_uri,
+                               char *out_host, size_t max_host,
+                               char *out_user_agent, size_t max_ua) {
+    out_method[0] = '\0';
+    out_uri[0] = '\0';
+    out_host[0] = '\0';
+    out_user_agent[0] = '\0';
+
+    if (len < 10) return;
+
+    const char *methods[] = {"GET ", "POST ", "HEAD ", "PUT ", "DELETE ", "OPTIONS ", "TRACE ", "CONNECT ", "PATCH "};
+    const size_t method_lens[] = {4, 5, 5, 4, 7, 8, 6, 8, 6};
+    int method_idx = -1;
+
+    for (size_t m = 0; m < sizeof(methods) / sizeof(methods[0]); m++) {
+        if (len >= method_lens[m] && memcmp(data, methods[m], method_lens[m]) == 0) {
+            method_idx = (int)m;
+            break;
+        }
+    }
+
+    if (method_idx == -1) return;
+
+    size_t m_len = method_lens[method_idx] - 1;
+    size_t copy_m = m_len < (max_method - 1) ? m_len : (max_method - 1);
+    memcpy(out_method, data, copy_m);
+    out_method[copy_m] = '\0';
+
+    size_t uri_start = method_lens[method_idx];
+    size_t cur = uri_start;
+    while (cur < len && data[cur] != ' ' && data[cur] != '\r' && data[cur] != '\n') {
+        cur++;
+    }
+    size_t uri_len = cur - uri_start;
+    if (uri_len > 0) {
+        size_t copy_uri = uri_len < (max_uri - 1) ? uri_len : (max_uri - 1);
+        memcpy(out_uri, data + uri_start, copy_uri);
+        out_uri[copy_uri] = '\0';
+    }
+
+    while (cur < len && data[cur] != '\n') {
+        cur++;
+    }
+    if (cur < len && data[cur] == '\n') cur++;
+
+    while (cur < len) {
+        if (data[cur] == '\r' && cur + 1 < len && data[cur + 1] == '\n') break;
+        if (data[cur] == '\n') break;
+
+        size_t line_start = cur;
+        while (cur < len && data[cur] != '\n') {
+            cur++;
+        }
+        size_t line_end = cur;
+        if (line_end > line_start && data[line_end - 1] == '\r') {
+            line_end--;
+        }
+        size_t line_len = line_end - line_start;
+
+        if (line_len > 5 && strncasecmp((const char*)(data + line_start), "Host:", 5) == 0) {
+            size_t val_start = line_start + 5;
+            while (val_start < line_end && (data[val_start] == ' ' || data[val_start] == '\t')) val_start++;
+            size_t val_len = line_end - val_start;
+            if (val_len > 0) {
+                size_t copy_h = val_len < (max_host - 1) ? val_len : (max_host - 1);
+                memcpy(out_host, data + val_start, copy_h);
+                out_host[copy_h] = '\0';
+            }
+        } else if (line_len > 11 && strncasecmp((const char*)(data + line_start), "User-Agent:", 11) == 0) {
+            size_t val_start = line_start + 11;
+            while (val_start < line_end && (data[val_start] == ' ' || data[val_start] == '\t')) val_start++;
+            size_t val_len = line_end - val_start;
+            if (val_len > 0) {
+                size_t copy_ua = val_len < (max_ua - 1) ? val_len : (max_ua - 1);
+                memcpy(out_user_agent, data + val_start, copy_ua);
+                out_user_agent[copy_ua] = '\0';
+            }
+        }
+
+        if (cur < len && data[cur] == '\n') cur++;
+    }
+}
+
 int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
                           int64_t sec, int64_t usec, cmonitor_packet_meta_t *out) {
     if (!data || !out) return -1;
@@ -222,6 +308,16 @@ int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
                         if (out->tls_sni[0] != '\0' && out->service[0] == '\0') {
                             strncpy(out->service, "HTTPS", sizeof(out->service) - 1);
                         }
+                    }
+
+                    // Extract HTTP Request Metadata (GET, POST, etc.)
+                    parse_http_request(data + payload_offset, out->payload_size,
+                                       out->http_method, sizeof(out->http_method),
+                                       out->http_uri, sizeof(out->http_uri),
+                                       out->http_host, sizeof(out->http_host),
+                                       out->http_user_agent, sizeof(out->http_user_agent));
+                    if (out->http_method[0] != '\0' && out->service[0] == '\0') {
+                        strncpy(out->service, "HTTP", sizeof(out->service) - 1);
                     }
                 }
             }

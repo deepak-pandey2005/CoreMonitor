@@ -153,10 +153,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				idx := len(m.cachedStats.RecentPackets) - 1 - m.packetCursor
 				if idx >= 0 && idx < len(m.cachedStats.RecentPackets) {
 					p := m.cachedStats.RecentPackets[idx]
-					m.detailContent = fmt.Sprintf("PACKET DETAILS:\n\nTimestamp:   %s\nSource:      %s %s:%d (%s - %s)\nDestination: %s %s:%d (%s - %s)\nProtocol:    %s\nService:     %s\nSize:        %d bytes\nPayload:     %d bytes\nTCP Flags:   %s\nTLS SNI:     %s\nDNS Query:   %s\nSrc MAC:     %s\nDst MAC:     %s\nBroadcast:   %t\n\n(Press ESC or Enter to close)",
+					httpInfo := ""
+					if p.HTTPMethod != "" {
+						httpInfo = fmt.Sprintf("\nHTTP:        %s %s%s (UA: %s)", p.HTTPMethod, p.HTTPHost, p.HTTPURI, p.HTTPUserAgent)
+					}
+					m.detailContent = fmt.Sprintf("PACKET DETAILS:\n\nTimestamp:   %s\nSource:      %s %s:%d (%s - %s)\nDestination: %s %s:%d (%s - %s)\nProtocol:    %s\nService:     %s\nSize:        %d bytes\nPayload:     %d bytes\nTCP Flags:   %s\nTLS SNI:     %s%s\nDNS Query:   %s\nSrc MAC:     %s\nDst MAC:     %s\nBroadcast:   %t\n\n(Press ESC or Enter to close)",
 						p.Timestamp.Format(time.RFC3339Nano), p.SrcFlag, p.SrcIP, p.SrcPort, p.SrcCountry, p.SrcOrg,
 						p.DstFlag, p.DstIP, p.DstPort, p.DstCountry, p.DstOrg,
-						p.Protocol, p.Service, p.PacketSize, p.PayloadSize, p.TCPFlagsStr, p.TLSSNI, p.DNSQuery, p.SrcMAC, p.DstMAC, p.IsBroadcast)
+						p.Protocol, p.Service, p.PacketSize, p.PayloadSize, p.TCPFlagsStr, p.TLSSNI, httpInfo, p.DNSQuery, p.SrcMAC, p.DstMAC, p.IsBroadcast)
 					m.showDetail = true
 				}
 			} else if m.activeTab == 2 && len(m.cachedStats.RecentAlerts) > 0 {
@@ -380,6 +384,17 @@ func (m Model) renderPackets() string {
 		extra := p.TCPFlagsStr
 		if p.TLSSNI != "" {
 			extra = "🔒 " + p.TLSSNI
+		} else if p.HTTPMethod != "" {
+			uri := p.HTTPURI
+			if len(uri) > 18 {
+				uri = uri[:18] + "…"
+			}
+			host := p.HTTPHost
+			if host != "" {
+				extra = fmt.Sprintf("🌐 %s %s%s", p.HTTPMethod, host, uri)
+			} else {
+				extra = fmt.Sprintf("🌐 %s %s", p.HTTPMethod, uri)
+			}
 		} else if p.DNSQuery != "" {
 			extra = "🌐 " + p.DNSQuery
 		}

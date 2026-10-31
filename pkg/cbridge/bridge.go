@@ -38,10 +38,14 @@ type PacketMeta struct {
 	PayloadSize uint32
 	TCPFlags    uint8
 	TCPFlagsStr string
-	DNSQuery    string
-	DNSType     uint16
-	TLSSNI      string
-	IsBroadcast bool
+	DNSQuery      string
+	DNSType       uint16
+	TLSSNI        string
+	HTTPMethod    string
+	HTTPHost      string
+	HTTPURI       string
+	HTTPUserAgent string
+	IsBroadcast   bool
 
 	// GeoIP Enrichment
 	SrcCountry string
@@ -152,10 +156,14 @@ func (c *Capture) Next() (*PacketMeta, []byte, error) {
 		PayloadSize: uint32(cMeta.payload_size),
 		TCPFlags:    uint8(cMeta.tcp_flags),
 		TCPFlagsStr: C.GoString(&cMeta.tcp_flags_str[0]),
-		DNSQuery:    C.GoString(&cMeta.dns_query[0]),
-		DNSType:     uint16(cMeta.dns_type),
-		TLSSNI:      C.GoString(&cMeta.tls_sni[0]),
-		IsBroadcast: cMeta.is_broadcast != 0,
+		DNSQuery:      C.GoString(&cMeta.dns_query[0]),
+		DNSType:       uint16(cMeta.dns_type),
+		TLSSNI:        C.GoString(&cMeta.tls_sni[0]),
+		HTTPMethod:    C.GoString(&cMeta.http_method[0]),
+		HTTPHost:      C.GoString(&cMeta.http_host[0]),
+		HTTPURI:       C.GoString(&cMeta.http_uri[0]),
+		HTTPUserAgent: C.GoString(&cMeta.http_user_agent[0]),
+		IsBroadcast:   cMeta.is_broadcast != 0,
 	}
 
 	var rawCopy []byte

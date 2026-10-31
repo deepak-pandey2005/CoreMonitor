@@ -27,7 +27,8 @@ def generate_scenario_packets() -> List[scapy.Packet]:
         + b"\x00\x00\x00\x0f\x00\x0d\x00\x00\x0a" + b"github.com"
     )
     packets.append(Ether() / IP(src="192.168.1.105", dst="140.82.112.4") / TCP(sport=51238, dport=443, flags="PA") / tls_payload)
-    packets.append(Ether() / IP(src="192.168.1.105", dst="93.184.216.34") / TCP(sport=51235, dport=80, flags="PA") / b"GET /index.html HTTP/1.1\r\nHost: example.com\r\n\r\n")
+    packets.append(Ether() / IP(src="192.168.1.105", dst="93.184.216.34") / TCP(sport=51235, dport=80, flags="PA") / b"GET /index.html HTTP/1.1\r\nHost: example.com\r\nUser-Agent: Mozilla/5.0 (X11; Linux x86_64)\r\n\r\n")
+    packets.append(Ether() / IP(src="192.168.1.105", dst="93.184.216.34") / TCP(sport=51236, dport=80, flags="PA") / b"POST /api/v1/auth HTTP/1.1\r\nHost: api.example.com\r\nUser-Agent: curl/8.2.1\r\n\r\n")
     packets.append(Ether() / IP(src="192.168.1.105", dst="8.8.8.8") / UDP(sport=54321, dport=53) / DNS(rd=1, qd=DNSQR(qname="google.com")))
 
     print("[*] Generating Port Scan (SYN scan probing 20 ports)...")

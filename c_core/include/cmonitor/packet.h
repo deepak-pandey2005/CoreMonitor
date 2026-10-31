@@ -29,6 +29,10 @@ typedef struct {
     char dns_query[256];
     uint16_t dns_type;
     char tls_sni[256];        /* Extracted TLS Server Name Indication (SNI) */
+    char http_method[16];     /* HTTP Method: "GET", "POST", etc. */
+    char http_host[128];      /* HTTP Host header */
+    char http_uri[256];       /* HTTP Request URI */
+    char http_user_agent[128];/* HTTP User-Agent header */
     uint8_t is_broadcast;
 } cmonitor_packet_meta_t;
 

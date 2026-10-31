@@ -33,6 +33,41 @@ func TestIDSEngineBridge(t *testing.T) {
 	}
 }
 
+func TestCaptureOfflineHTTPAndTLS(t *testing.T) {
+	cap, err := OpenOffline("../../tests/fixtures/attack_sample.pcap", "")
+	if err != nil {
+		t.Fatalf("failed to open pcap: %v", err)
+	}
+	defer cap.Close()
+
+	foundHTTP := false
+	foundTLS := false
+
+	for {
+		meta, _, err := cap.Next()
+		if err == ErrEOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("capture error: %v", err)
+		}
+
+		if meta.TLSSNI == "github.com" {
+			foundTLS = true
+		}
+		if meta.HTTPMethod == "GET" && meta.HTTPHost == "example.com" {
+			foundHTTP = true
+		}
+	}
+
+	if !foundTLS {
+		t.Errorf("expected to find TLS SNI 'github.com' in attack_sample.pcap")
+	}
+	if !foundHTTP {
+		t.Errorf("expected to find HTTP request 'GET example.com' in attack_sample.pcap")
+	}
+}
+
 const (
 	CMonitorTCPFIN = 0x01
 	CMonitorTCPSYN = 0x02

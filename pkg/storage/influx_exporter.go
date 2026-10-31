@@ -125,6 +125,22 @@ func (exp *InfluxExporter) WritePacket(meta *cbridge.PacketMeta) {
 		exp.buffer = append(exp.buffer, sniLine)
 	}
 
+	if meta.HTTPMethod != "" {
+		host := meta.HTTPHost
+		if host == "" {
+			host = "unknown"
+		}
+		httpLine := fmt.Sprintf("http_activity,client_ip=%s,method=%s,host=%s uri=%q,user_agent=%q,count=1i %d",
+			escapeTag(meta.SrcIP),
+			escapeTag(meta.HTTPMethod),
+			escapeTag(host),
+			meta.HTTPURI,
+			meta.HTTPUserAgent,
+			meta.Timestamp.UnixNano(),
+		)
+		exp.buffer = append(exp.buffer, httpLine)
+	}
+
 	if len(exp.buffer) >= exp.cfg.InfluxDB.BatchSize {
 		go exp.Flush()
 	}

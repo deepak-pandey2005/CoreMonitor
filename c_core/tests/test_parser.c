@@ -163,11 +163,55 @@ void test_parse_tls_sni() {
     printf("✓ test_parse_tls_sni passed (Extracted SNI: %s)\n", meta.tls_sni);
 }
 
+static void test_parse_http_request() {
+    uint8_t buffer[512] = {0};
+    struct ether_header *eth = (struct ether_header*)buffer;
+    eth->ether_type = htons(ETHERTYPE_IP);
+
+    struct iphdr *ip = (struct iphdr*)(buffer + sizeof(struct ether_header));
+    ip->ihl = 5;
+    ip->version = 4;
+    ip->protocol = IPPROTO_TCP;
+    inet_pton(AF_INET, "10.0.0.15", &ip->saddr);
+    inet_pton(AF_INET, "192.168.1.80", &ip->daddr);
+
+    struct tcphdr *tcp = (struct tcphdr*)(buffer + sizeof(struct ether_header) + 20);
+    tcp->source = htons(54321);
+    tcp->dest = htons(8080);
+    tcp->doff = 5;
+
+    const char *http_payload =
+        "GET /api/v1/metrics HTTP/1.1\r\n"
+        "Host: monitor.internal\r\n"
+        "User-Agent: CoreMonitorAgent/1.0\r\n"
+        "Accept: text/plain\r\n\r\n";
+    size_t payload_len = strlen(http_payload);
+
+    uint8_t *payload_ptr = buffer + sizeof(struct ether_header) + 20 + 20;
+    memcpy(payload_ptr, http_payload, payload_len);
+
+    size_t total_len = sizeof(struct ether_header) + 20 + 20 + payload_len;
+
+    cmonitor_packet_meta_t meta;
+    int res = cmonitor_parse_packet(buffer, total_len, total_len, 4000, 0, &meta);
+    assert(res == 0);
+    assert(strcmp(meta.protocol, "TCP") == 0);
+    assert(meta.dst_port == 8080);
+    assert(strcmp(meta.service, "HTTP") == 0);
+    assert(strcmp(meta.http_method, "GET") == 0);
+    assert(strcmp(meta.http_uri, "/api/v1/metrics") == 0);
+    assert(strcmp(meta.http_host, "monitor.internal") == 0);
+    assert(strcmp(meta.http_user_agent, "CoreMonitorAgent/1.0") == 0);
+    printf("✓ test_parse_http_request passed (Method: %s, Host: %s, URI: %s, UA: %s)\n",
+           meta.http_method, meta.http_host, meta.http_uri, meta.http_user_agent);
+}
+
 int main() {
     printf("Running C Core Parser Tests...\n");
     test_parse_tcp_syn();
     test_parse_udp_dns();
     test_parse_tls_sni();
+    test_parse_http_request();
     printf("All C Parser tests passed successfully!\n");
     return 0;
 }

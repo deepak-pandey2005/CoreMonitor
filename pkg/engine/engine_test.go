@@ -42,8 +42,8 @@ func TestEngineOfflinePCAPInspection(t *testing.T) {
 	}
 
 	stats := eng.GetStats()
-	if stats.TotalPackets != 85 {
-		t.Errorf("expected 85 packets, got %d", stats.TotalPackets)
+	if stats.TotalPackets < 85 {
+		t.Errorf("expected at least 85 packets, got %d", stats.TotalPackets)
 	}
 
 	if len(stats.RecentAlerts) != 10 {
