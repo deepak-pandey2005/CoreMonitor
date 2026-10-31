@@ -68,7 +68,12 @@ flowchart TD
      - Standard `.pcap` files with automated time-based rotation.
      - Streaming CSV logs (`captures/traffic_*.csv` and `captures/alerts_*.csv`).
      - InfluxDB v2 line-protocol dispatcher with non-blocking resilience.
-   - **Interactive Terminal UI**: ANSI colored live dashboard showing bandwidth rates, top talkers, protocol breakdown, and real-time security alerts.
+   - **Interactive Charmbracelet Bubbletea TUI**: Modern multi-tabbed terminal dashboard featuring:
+    - `Tab` / `1-3`: Switch views between **Overview Dashboard**, **Live Packet Stream**, and **Security Alerts Log**.
+    - `Space`: Instant **Pause / Resume** to inspect live packet bursts without losing your place.
+    - `↑` / `↓`: Interactive row selection cursor.
+    - `Enter`: Full packet and security alert detail inspection modal.
+    - `q` / `Ctrl+C`: Clean shutdown.
 
 3. **Grafana & InfluxDB Visualization (`grafana/`)**
    - Pre-provisioned InfluxDB datasource and Grafana dashboard (`docker-compose.yml`).

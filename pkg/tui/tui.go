@@ -2,132 +2,356 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/engine"
 )
 
-// ANSI color escape codes
-const (
-	Reset       = "\033[0m"
-	Bold        = "\033[1m"
-	Dim         = "\033[2m"
-	Red         = "\033[31m"
-	Green       = "\033[32m"
-	Yellow      = "\033[33m"
-	Blue        = "\033[34m"
-	Magenta     = "\033[35m"
-	Cyan        = "\033[36m"
-	White       = "\033[37m"
-	BgRed       = "\033[41m"
-	ClearScreen = "\033[H\033[2J"
+// UI Theme Styles
+var (
+	subtleColor    = lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#383838"}
+	highlightColor = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	specialColor   = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
+	warnColor      = lipgloss.AdaptiveColor{Light: "#FFA500", Dark: "#FFAE34"}
+	critColor      = lipgloss.AdaptiveColor{Light: "#FF0000", Dark: "#FF4D4D"}
+
+	docStyle = lipgloss.NewStyle().Margin(1, 2)
+
+	tabStyle = lipgloss.NewStyle().
+			Padding(0, 2).
+			Foreground(lipgloss.Color("#888888"))
+
+	activeTabStyle = tabStyle.
+			Bold(true).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(highlightColor)
+
+	boxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(subtleColor).
+			Padding(0, 1)
+
+	headerTitleStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#00FFFF"))
+
+	statusLive = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(specialColor)
+
+	statusPaused = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(warnColor)
+
+	critBadge = lipgloss.NewStyle().
+			Bold(true).
+			Background(critColor).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Padding(0, 1)
+
+	highBadge = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(critColor)
+
+	medBadge = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(warnColor)
 )
 
-func Render(iface string, stats engine.Stats) {
+type tickMsg time.Time
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(250*time.Millisecond, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+type Model struct {
+	engine        *engine.Engine
+	iface         string
+	activeTab     int // 0: Overview, 1: Packets, 2: Alerts
+	paused        bool
+	cachedStats   engine.Stats
+	packetCursor  int
+	alertCursor   int
+	showDetail    bool
+	detailContent string
+	width         int
+	height        int
+}
+
+func NewModel(eng *engine.Engine, iface string) Model {
+	return Model{
+		engine:      eng,
+		iface:       iface,
+		activeTab:   0,
+		paused:      false,
+		cachedStats: eng.GetStats(),
+		width:       100,
+		height:      30,
+	}
+}
+
+func (m Model) Init() tea.Cmd {
+	return tickCmd()
+}
+
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		if m.showDetail {
+			if msg.String() == "esc" || msg.String() == "enter" || msg.String() == "q" {
+				m.showDetail = false
+				return m, nil
+			}
+		}
+
+		switch msg.String() {
+		case "ctrl+c", "q":
+			m.engine.Stop()
+			return m, tea.Quit
+
+		case "tab":
+			m.activeTab = (m.activeTab + 1) % 3
+
+		case "shift+tab":
+			m.activeTab = (m.activeTab + 2) % 3
+
+		case "1":
+			m.activeTab = 0
+		case "2":
+			m.activeTab = 1
+		case "3":
+			m.activeTab = 2
+
+		case " ":
+			m.paused = !m.paused
+
+		case "up", "k":
+			if m.activeTab == 1 && m.packetCursor > 0 {
+				m.packetCursor--
+			} else if m.activeTab == 2 && m.alertCursor > 0 {
+				m.alertCursor--
+			}
+
+		case "down", "j":
+			if m.activeTab == 1 && m.packetCursor < len(m.cachedStats.RecentPackets)-1 {
+				m.packetCursor++
+			} else if m.activeTab == 2 && m.alertCursor < len(m.cachedStats.RecentAlerts)-1 {
+				m.alertCursor++
+			}
+
+		case "enter":
+			if m.activeTab == 1 && len(m.cachedStats.RecentPackets) > 0 {
+				idx := len(m.cachedStats.RecentPackets) - 1 - m.packetCursor
+				if idx >= 0 && idx < len(m.cachedStats.RecentPackets) {
+					p := m.cachedStats.RecentPackets[idx]
+					m.detailContent = fmt.Sprintf("PACKET DETAILS:\n\nTimestamp:   %s\nSource:      %s:%d\nDestination: %s:%d\nProtocol:    %s\nService:     %s\nSize:        %d bytes\nPayload:     %d bytes\nTCP Flags:   %s\nDNS Query:   %s\nSrc MAC:     %s\nDst MAC:     %s\nBroadcast:   %t\n\n(Press ESC or Enter to close)",
+						p.Timestamp.Format(time.RFC3339Nano), p.SrcIP, p.SrcPort, p.DstIP, p.DstPort, p.Protocol, p.Service, p.PacketSize, p.PayloadSize, p.TCPFlagsStr, p.DNSQuery, p.SrcMAC, p.DstMAC, p.IsBroadcast)
+					m.showDetail = true
+				}
+			} else if m.activeTab == 2 && len(m.cachedStats.RecentAlerts) > 0 {
+				idx := len(m.cachedStats.RecentAlerts) - 1 - m.alertCursor
+				if idx >= 0 && idx < len(m.cachedStats.RecentAlerts) {
+					a := m.cachedStats.RecentAlerts[idx]
+					m.detailContent = fmt.Sprintf("SECURITY ALERT DETAILS:\n\nSeverity:    %s\nAlert Type:  %s\nTimestamp:   %s\nSource IP:   %s:%d\nTarget IP:   %s:%d\nProtocol:    %s\nMessage:     %s\nDetails:     %s\n\n(Press ESC or Enter to close)",
+						a.Severity, a.AlertType, a.Timestamp.Format(time.RFC3339Nano), a.SrcIP, a.SrcPort, a.DstIP, a.DstPort, a.Protocol, a.Message, a.Details)
+					m.showDetail = true
+				}
+			}
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+	case tickMsg:
+		if !m.paused {
+			m.cachedStats = m.engine.GetStats()
+		}
+		return m, tickCmd()
+	}
+
+	return m, nil
+}
+
+func (m Model) View() string {
 	var b strings.Builder
-	b.WriteString(ClearScreen)
 
-	uptime := time.Since(stats.StartTime).Truncate(time.Second)
+	// Top Navigation Bar
+	tabs := []string{"1: Overview", "2: Live Packets", fmt.Sprintf("3: Alerts (%d)", len(m.cachedStats.RecentAlerts))}
+	var renderedTabs []string
+	for i, t := range tabs {
+		if i == m.activeTab {
+			renderedTabs = append(renderedTabs, activeTabStyle.Render(t))
+		} else {
+			renderedTabs = append(renderedTabs, tabStyle.Render(t))
+		}
+	}
 
-	// Header
-	b.WriteString(fmt.Sprintf("%s%s┌────────────────────────────────────────────────────────────────────────────────────────┐%s\n", Bold, Blue, Reset))
-	b.WriteString(fmt.Sprintf("%s%s│  Interface: %s%-10s%s  🛡️  CoreMonitor Network IDS (C Core + Go)  Uptime: %s%-12s%s│%s\n",
-		Bold, Blue, Yellow, iface, Bold+Blue, White, uptime, Bold+Blue, Reset))
-	b.WriteString(fmt.Sprintf("%s%s└────────────────────────────────────────────────────────────────────────────────────────┘%s\n", Bold, Blue, Reset))
+	status := statusLive.Render("● LIVE")
+	if m.paused {
+		status = statusPaused.Render("⏸ PAUSED")
+	}
 
-	// Bandwidth Metrics
+	uptime := time.Since(m.cachedStats.StartTime).Truncate(time.Second)
+	navRow := lipgloss.JoinHorizontal(lipgloss.Top,
+		lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...),
+		lipgloss.NewStyle().Width(m.width-60).Align(lipgloss.Right).Render(
+			fmt.Sprintf("Iface: %s  |  Uptime: %s  |  %s", m.iface, uptime, status),
+		),
+	)
+	b.WriteString(navRow + "\n\n")
+
+	// Render Selected Tab Content
+	switch m.activeTab {
+	case 0:
+		b.WriteString(m.renderOverview())
+	case 1:
+		b.WriteString(m.renderPackets())
+	case 2:
+		b.WriteString(m.renderAlerts())
+	}
+
+	// Modal detail overlay
+	if m.showDetail {
+		modal := lipgloss.NewStyle().
+			Border(lipgloss.DoubleBorder()).
+			BorderForeground(highlightColor).
+			Background(lipgloss.Color("#1a1a2e")).
+			Padding(1, 2).
+			Width(65).
+			Render(m.detailContent)
+		return modal
+	}
+
+	// Footer Help
+	footer := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#666666")).
+		MarginTop(1).
+		Render("  [Tab/1-3] Switch View  •  [Space] Pause/Resume  •  [↑/↓] Select  •  [Enter] Inspect  •  [q] Quit")
+	b.WriteString(footer)
+
+	return docStyle.Render(b.String())
+}
+
+func (m Model) renderOverview() string {
+	stats := m.cachedStats
+
+	// Flow Box
 	totalMB := float64(stats.TotalBytes) / (1024 * 1024)
 	rateKBs := stats.BytesPerSec / 1024
-	b.WriteString(fmt.Sprintf("%s%s[ FLOW METRICS ]%s\n", Bold, Cyan, Reset))
-	b.WriteString(fmt.Sprintf("  • Total Packets: %s%-12d%s  • Volume:     %s%-10.2f MB%s\n",
-		Bold+White, stats.TotalPackets, Reset, Bold+White, totalMB, Reset))
-	b.WriteString(fmt.Sprintf("  • Throughput:    %s%-10.2f KB/s%s  • Packet Rate: %s%-10.1f pkts/s%s\n\n",
-		Bold+Green, rateKBs, Reset, Bold+Green, stats.PktsPerSec, Reset))
+	flowContent := fmt.Sprintf(
+		"Total Packets: %s\nTotal Volume:  %.2f MB\nThroughput:    %s\nPacket Rate:   %.1f pkts/s",
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFFF")).Render(fmt.Sprintf("%d", stats.TotalPackets)),
+		totalMB,
+		lipgloss.NewStyle().Bold(true).Foreground(specialColor).Render(fmt.Sprintf("%.2f KB/s", rateKBs)),
+		stats.PktsPerSec,
+	)
+	flowBox := boxStyle.Width(35).Render(headerTitleStyle.Render("FLOW METRICS\n") + flowContent)
 
-	// Protocols & Top Talkers
-	b.WriteString(fmt.Sprintf("%s%s[ PROTOCOLS ]%s                                    %s%s[ TOP TALKERS ]%s\n",
-		Bold, Magenta, Reset, Bold, Yellow, Reset))
-
-	type protoPair struct {
+	// Protocols Box
+	type pPair struct {
 		name  string
 		count uint64
 	}
-	var protos []protoPair
+	var protos []pPair
 	for k, v := range stats.ProtocolCounts {
-		protos = append(protos, protoPair{name: k, count: v})
+		protos = append(protos, pPair{k, v})
 	}
 	sort.Slice(protos, func(i, j int) bool { return protos[i].count > protos[j].count })
 
-	type talkerPair struct {
+	var protoLines []string
+	for i := 0; i < 4 && i < len(protos); i++ {
+		pct := float64(0)
+		if stats.TotalPackets > 0 {
+			pct = (float64(protos[i].count) / float64(stats.TotalPackets)) * 100
+		}
+		protoLines = append(protoLines, fmt.Sprintf("%-6s %-7d (%4.1f%%)", protos[i].name, protos[i].count, pct))
+	}
+	if len(protoLines) == 0 {
+		protoLines = append(protoLines, "Listening for traffic...")
+	}
+	protoBox := boxStyle.Width(30).Render(headerTitleStyle.Render("PROTOCOLS\n") + strings.Join(protoLines, "\n"))
+
+	// Top Talkers Box
+	type tPair struct {
 		ip    string
 		bytes uint64
 	}
-	var talkers []talkerPair
+	var talkers []tPair
 	for k, v := range stats.TopTalkersBytes {
-		talkers = append(talkers, talkerPair{ip: k, bytes: v})
+		talkers = append(talkers, tPair{k, v})
 	}
 	sort.Slice(talkers, func(i, j int) bool { return talkers[i].bytes > talkers[j].bytes })
 
-	maxRows := 4
-	for i := 0; i < maxRows; i++ {
-		pStr := "  - "
-		if i < len(protos) {
-			pct := float64(0)
-			if stats.TotalPackets > 0 {
-				pct = (float64(protos[i].count) / float64(stats.TotalPackets)) * 100
-			}
-			pStr = fmt.Sprintf("  %-8s %-8d (%4.1f%%)", protos[i].name, protos[i].count, pct)
+	var talkerLines []string
+	for i := 0; i < 4 && i < len(talkers); i++ {
+		vol := fmt.Sprintf("%.1f KB", float64(talkers[i].bytes)/1024)
+		if talkers[i].bytes > 1024*1024 {
+			vol = fmt.Sprintf("%.2f MB", float64(talkers[i].bytes)/(1024*1024))
 		}
-
-		tStr := ""
-		if i < len(talkers) {
-			vol := fmt.Sprintf("%.1f KB", float64(talkers[i].bytes)/1024)
-			if talkers[i].bytes > 1024*1024 {
-				vol = fmt.Sprintf("%.2f MB", float64(talkers[i].bytes)/(1024*1024))
-			}
-			tStr = fmt.Sprintf("%-18s %s", talkers[i].ip, vol)
-		}
-		b.WriteString(fmt.Sprintf("%-45s  %s\n", pStr, tStr))
+		talkerLines = append(talkerLines, fmt.Sprintf("%-16s %s", talkers[i].ip, vol))
 	}
-	b.WriteString("\n")
+	if len(talkerLines) == 0 {
+		talkerLines = append(talkerLines, "Waiting for traffic...")
+	}
+	talkerBox := boxStyle.Width(32).Render(headerTitleStyle.Render("TOP TALKERS\n") + strings.Join(talkerLines, "\n"))
 
-	// IDS Alerts Panel
-	b.WriteString(fmt.Sprintf("%s%s🚨 [ LIVE IDS SECURITY ALERTS ]%s\n", Bold, Red, Reset))
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, flowBox, " ", protoBox, " ", talkerBox)
+
+	// Alerts Ticker Row
+	var alertLines []string
 	if len(stats.RecentAlerts) == 0 {
-		b.WriteString(fmt.Sprintf("  %s✓ Network baseline normal. No threats detected.%s\n", Green, Reset))
+		alertLines = append(alertLines, lipgloss.NewStyle().Foreground(specialColor).Render("✓ Network baseline normal. No active threats detected."))
 	} else {
 		start := 0
-		if len(stats.RecentAlerts) > 5 {
-			start = len(stats.RecentAlerts) - 5
+		if len(stats.RecentAlerts) > 4 {
+			start = len(stats.RecentAlerts) - 4
 		}
 		for i := len(stats.RecentAlerts) - 1; i >= start; i-- {
 			a := stats.RecentAlerts[i]
-			sevBadge := fmt.Sprintf("[%s]", a.Severity)
+			badge := medBadge.Render("[MED]")
 			if a.Severity == "CRITICAL" {
-				sevBadge = fmt.Sprintf("%s%s CRITICAL %s", Bold+White, BgRed, Reset)
+				badge = critBadge.Render("CRITICAL")
 			} else if a.Severity == "HIGH" {
-				sevBadge = fmt.Sprintf("%s%s HIGH %s", Bold, Red, Reset)
-			} else {
-				sevBadge = fmt.Sprintf("%s%s MEDIUM %s", Bold, Yellow, Reset)
+				badge = highBadge.Render("[HIGH]")
 			}
 			tStr := a.Timestamp.Format("15:04:05")
-			b.WriteString(fmt.Sprintf("  %s %s %-18s %s -> %s\n    └─ %s\n",
-				Dim+tStr+Reset, sevBadge, a.AlertType, a.SrcIP, a.DstIP, a.Message))
+			alertLines = append(alertLines, fmt.Sprintf(" %s %s %-16s %s -> %s | %s",
+				tStr, badge, a.AlertType, a.SrcIP, a.DstIP, a.Message))
 		}
 	}
-	b.WriteString("\n")
+	alertsBox := boxStyle.Width(100).Render(lipgloss.NewStyle().Bold(true).Foreground(critColor).Render("RECENT SECURITY ALERTS\n") + strings.Join(alertLines, "\n"))
 
-	// Recent Packets Log
-	b.WriteString(fmt.Sprintf("%s%s[ RECENT PACKETS ]%s\n", Bold, White, Reset))
-	pStart := 0
-	if len(stats.RecentPackets) > 5 {
-		pStart = len(stats.RecentPackets) - 5
+	return lipgloss.JoinVertical(lipgloss.Left, topRow, "\n", alertsBox)
+}
+
+func (m Model) renderPackets() string {
+	packets := m.cachedStats.RecentPackets
+	if len(packets) == 0 {
+		return "  Listening for packets on " + m.iface + "..."
 	}
-	for i := len(stats.RecentPackets) - 1; i >= pStart; i-- {
-		p := stats.RecentPackets[i]
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("   %-10s  %-21s  %-21s  %-6s %-12s %-6s %s",
+		"TIME", "SOURCE", "DESTINATION", "PROTO", "SERVICE", "SIZE", "INFO / FLAGS"))
+
+	maxRows := 12
+	startIdx := len(packets) - 1
+	for i := 0; i < maxRows && (startIdx-i) >= 0; i++ {
+		p := packets[startIdx-i]
+		cursor := "  "
+		rowStyle := lipgloss.NewStyle()
+		if i == m.packetCursor {
+			cursor = "> "
+			rowStyle = rowStyle.Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#333366"))
+		}
+
 		tStr := p.Timestamp.Format("15:04:05")
 		src := fmt.Sprintf("%s:%d", p.SrcIP, p.SrcPort)
 		if p.SrcPort == 0 {
@@ -137,13 +361,56 @@ func Render(iface string, stats engine.Stats) {
 		if p.DstPort == 0 {
 			dst = p.DstIP
 		}
-		extra := p.TCPFlagsStr
+		info := p.TCPFlagsStr
 		if p.DNSQuery != "" {
-			extra = p.DNSQuery
+			info = p.DNSQuery
 		}
-		b.WriteString(fmt.Sprintf("  %s  %-21s -> %-21s  %-5s %-12s %4dB  %s\n",
-			Dim+tStr+Reset, src, dst, p.Protocol, p.Service, p.PacketSize, extra))
+
+		row := fmt.Sprintf("%s%-10s  %-21s  %-21s  %-6s %-12s %-6dB %s",
+			cursor, tStr, src, dst, p.Protocol, p.Service, p.PacketSize, info)
+		lines = append(lines, rowStyle.Render(row))
 	}
 
-	_, _ = os.Stdout.WriteString(b.String())
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) renderAlerts() string {
+	alerts := m.cachedStats.RecentAlerts
+	if len(alerts) == 0 {
+		return "  ✓ No security alerts detected."
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("   %-10s  %-10s  %-20s  %-35s  %s",
+		"TIME", "SEVERITY", "ALERT TYPE", "SOURCE -> TARGET", "MESSAGE"))
+
+	maxRows := 12
+	startIdx := len(alerts) - 1
+	for i := 0; i < maxRows && (startIdx-i) >= 0; i++ {
+		a := alerts[startIdx-i]
+		cursor := "  "
+		rowStyle := lipgloss.NewStyle()
+		if i == m.alertCursor {
+			cursor = "> "
+			rowStyle = rowStyle.Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#442222"))
+		}
+
+		sev := a.Severity
+		tStr := a.Timestamp.Format("15:04:05")
+		srcDst := fmt.Sprintf("%s -> %s", a.SrcIP, a.DstIP)
+
+		row := fmt.Sprintf("%s%-10s  %-10s  %-20s  %-35s  %s",
+			cursor, tStr, sev, a.AlertType, srcDst, a.Message)
+		lines = append(lines, rowStyle.Render(row))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// RunBubbleTea starts the interactive TUI
+func RunBubbleTea(eng *engine.Engine, iface string) error {
+	m := NewModel(eng, iface)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	_, err := p.Run()
+	return err
 }
