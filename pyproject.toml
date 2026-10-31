@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coremonitor"
+version = "0.1.0"
+description = "Lightweight Network Traffic Analyzer and Intrusion Detection System (IDS)"
+readme = "README.md"
+authors = [{ name = "Deepak Pandey" }]
+requires-python = ">=3.9"
+dependencies = [
+    "scapy>=2.5.0",
+    "influxdb-client>=1.38.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+coremonitor = "coremonitor.cli:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

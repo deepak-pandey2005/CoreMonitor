@@ -1,0 +1,31 @@
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Testing & Linters
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Captured data (pcap & csv)
+captures/*.pcap
+captures/*.csv
+!captures/.gitkeep
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker / InfluxDB local data
+influxdb-data/
+grafana-data/
