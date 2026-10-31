@@ -117,10 +117,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "tab":
-			m.activeTab = (m.activeTab + 1) % 3
+			m.activeTab = (m.activeTab + 1) % 4
 
 		case "shift+tab":
-			m.activeTab = (m.activeTab + 2) % 3
+			m.activeTab = (m.activeTab + 3) % 4
 
 		case "1":
 			m.activeTab = 0
@@ -128,6 +128,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeTab = 1
 		case "3":
 			m.activeTab = 2
+		case "4":
+			m.activeTab = 3
 
 		case " ":
 			m.paused = !m.paused
@@ -189,7 +191,12 @@ func (m Model) View() string {
 	var b strings.Builder
 
 	// Top Navigation Bar
-	tabs := []string{"1: Overview", "2: Live Packets", fmt.Sprintf("3: Alerts (%d)", len(m.cachedStats.RecentAlerts))}
+	tabs := []string{
+		"1: Overview",
+		"2: Live Packets",
+		fmt.Sprintf("3: Alerts (%d)", len(m.cachedStats.RecentAlerts)),
+		fmt.Sprintf("4: IPS Jails (%d)", len(m.cachedStats.BannedHosts)),
+	}
 	var renderedTabs []string
 	for i, t := range tabs {
 		if i == m.activeTab {
@@ -221,6 +228,8 @@ func (m Model) View() string {
 		b.WriteString(m.renderPackets())
 	case 2:
 		b.WriteString(m.renderAlerts())
+	case 3:
+		b.WriteString(m.renderIPS())
 	}
 
 	// Modal detail overlay
@@ -239,7 +248,7 @@ func (m Model) View() string {
 	footer := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#666666")).
 		MarginTop(1).
-		Render("  [Tab/1-3] Switch View  •  [Space] Pause/Resume  •  [↑/↓] Select  •  [Enter] Inspect  •  [q] Quit")
+		Render("  [Tab/1-4] Switch View  •  [Space] Pause/Resume  •  [↑/↓] Select  •  [Enter] Inspect  •  [q] Quit")
 	b.WriteString(footer)
 
 	return docStyle.Render(b.String())
@@ -409,6 +418,39 @@ func (m Model) renderAlerts() string {
 		row := fmt.Sprintf("%s%-10s  %-10s  %-20s  %-35s  %s",
 			cursor, tStr, sev, a.AlertType, srcDst, a.Message)
 		lines = append(lines, rowStyle.Render(row))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) renderIPS() string {
+	banned := m.cachedStats.BannedHosts
+	if len(banned) == 0 {
+		return "  🛡️ Active Defense (IPS): No hosts currently jailed/blocked. Network perimeter secure."
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("   %-16s  %-6s  %-12s  %-12s  %s",
+		"BANNED IP", "GEO", "SEVERITY", "TIME LEFT", "TRIGGER REASON"))
+
+	now := time.Now()
+	for _, h := range banned {
+		loc := geoip.Lookup(h.IP)
+		timeLeft := h.ExpiresAt.Sub(now).Truncate(time.Second)
+		if timeLeft < 0 {
+			timeLeft = 0
+		}
+
+		sev := h.Severity
+		if h.Severity == "CRITICAL" {
+			sev = critBadge.Render("CRITICAL")
+		} else if h.Severity == "HIGH" {
+			sev = highBadge.Render("[HIGH]")
+		}
+
+		row := fmt.Sprintf("   %-16s  %s %-3s  %-12s  %-12s  %s",
+			h.IP, loc.Flag, loc.CountryCode, sev, timeLeft, h.Reason)
+		lines = append(lines, row)
 	}
 
 	return strings.Join(lines, "\n")

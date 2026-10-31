@@ -11,6 +11,7 @@ import (
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/cbridge"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/config"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/engine"
+	"github.com/deepak-pandey2005/CoreMonitor/pkg/geoip"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/tui"
 )
 
@@ -163,6 +164,14 @@ func runPCAP(args []string) {
 				dst = fmt.Sprintf("%s %s", a.DstFlag, a.DstIP)
 			}
 			fmt.Printf("  • [%s] %s (%s -> %s): %s\n", a.Severity, a.AlertType, src, dst, a.Message)
+		}
+	}
+
+	if len(stats.BannedHosts) > 0 {
+		fmt.Printf("\n🛡️ Active Defense (IPS) Jailed %d Host(s) (Mode: %s):\n", len(stats.BannedHosts), cfg.IPS.Mode)
+		for _, h := range stats.BannedHosts {
+			loc := geoip.Lookup(h.IP)
+			fmt.Printf("  • [%s] %s %-15s | %s\n", h.Severity, loc.Flag, h.IP, h.Reason)
 		}
 	}
 }

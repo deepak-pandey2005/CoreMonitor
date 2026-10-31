@@ -33,4 +33,15 @@ ids:
   bandwidth_window_seconds: 2
   dns_tunnel_anomaly_length: 60    # Flag DNS queries with subdomain length exceeding this
 
+ips:
+  enabled: true                    # Enable Active Defense (IPS)
+  mode: "simulate"                 # "simulate" (safe logging) or "block" (executes real iptables DROP rules)
+  ban_duration_seconds: 600        # Automatic ban duration (10 minutes)
+  min_severity: "HIGH"             # Minimum severity to trigger ban ("HIGH" or "CRITICAL")
+  whitelist:                       # IPs that will NEVER be banned (protects gateways & management)
+    - "127.0.0.1"
+    - "::1"
+    - "192.168.1.1"
+    - "192.168.0.1"
+
 live_dashboard: true     # Render real-time terminal UI with statistics and alerts

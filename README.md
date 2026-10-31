@@ -62,7 +62,16 @@ flowchart TD
      - **DNS Tunneling**: Identifies suspiciously long domain queries (> 60 characters).
      - **Threat Intelligence**: Immediate matching against blacklisted IP feeds with alert cooldown suppression.
 
-2. **Modern Go Upper Layer (`pkg/`, `cmd/`)**
+2. **Active Defense: Intrusion Prevention System (IPS) (`pkg/ips/`)**
+   - **Automated Firewall Jail**: Automatically neutralizes threats by executing Linux `iptables` / `nftables` DROP rules against offending hosts.
+   - **Configurable Modes**:
+     - `simulate`: Safe audit mode that logs and simulates defensive actions without modifying live firewall tables.
+     - `block`: Active enforcement that drops all traffic from attackers.
+   - **Timed Auto-Unban**: Configurable jail duration (e.g. 10 minutes) with automatic background expiration and unbanning.
+   - **Built-in Whitelist**: Guarantees gateway, localhost (`127.0.0.1`), and management subnets are immune to lockout.
+   - **Clean Teardown**: Automatically removes temporary DROP rules upon engine shutdown so your firewall tables remain clean.
+
+3. **Modern Go Upper Layer (`pkg/`, `cmd/`)**
    - High-throughput zero-copy CGO bridge.
    - **Multi-Format Storage**:
      - Standard `.pcap` files with automated time-based rotation.

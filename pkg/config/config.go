@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 
+	"github.com/deepak-pandey2005/CoreMonitor/pkg/ips"
 	"gopkg.in/yaml.v3"
 )
 
@@ -45,6 +46,8 @@ type Config struct {
 	} `yaml:"ids"`
 
 	LiveDashboard bool `yaml:"live_dashboard"`
+
+	IPS ips.Config `yaml:"ips"`
 }
 
 func DefaultConfig() *Config {
@@ -78,6 +81,7 @@ func DefaultConfig() *Config {
 	cfg.IDS.DNSTunnelAnomalyLength = 60
 
 	cfg.LiveDashboard = true
+	cfg.IPS = ips.DefaultConfig()
 	return cfg
 }
 

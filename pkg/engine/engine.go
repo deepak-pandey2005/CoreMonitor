@@ -7,6 +7,7 @@ import (
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/cbridge"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/config"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/geoip"
+	"github.com/deepak-pandey2005/CoreMonitor/pkg/ips"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/storage"
 )
 
@@ -21,6 +22,7 @@ type Stats struct {
 	RateHistory     []ratePoint
 	BytesPerSec     float64
 	PktsPerSec      float64
+	BannedHosts     []ips.BannedHost
 }
 
 type ratePoint struct {
@@ -32,6 +34,7 @@ type Engine struct {
 	cfg     config.Config
 	capture *cbridge.Capture
 	ids     *cbridge.IDSEngine
+	ipsMgr  *ips.Manager
 
 	csvExp    *storage.CSVExporter
 	pcapExp   *storage.PCAPExporter
@@ -67,11 +70,13 @@ func NewEngine(cfg config.Config, capture *cbridge.Capture) (*Engine, error) {
 	}
 
 	influxExp := storage.NewInfluxExporter(cfg)
+	ipsMgr := ips.NewManager(cfg.IPS)
 
 	eng := &Engine{
 		cfg:       cfg,
 		capture:   capture,
 		ids:       cbridge.NewIDSEngine(idsCfg),
+		ipsMgr:    ipsMgr,
 		csvExp:    csvExp,
 		pcapExp:   pcapExp,
 		influxExp: influxExp,
@@ -129,6 +134,11 @@ func (e *Engine) ProcessLoop() error {
 			alerts[i].SrcFlag = srcLoc.Flag
 			alerts[i].DstCountry = dstLoc.CountryCode
 			alerts[i].DstFlag = dstLoc.Flag
+
+			// Active Defense (IPS)
+			if e.ipsMgr != nil {
+				e.ipsMgr.HandleAlert(alerts[i])
+			}
 		}
 
 		// Exporters
@@ -217,6 +227,11 @@ func (e *Engine) GetStats() Stats {
 	pktsCopy := make([]*cbridge.PacketMeta, len(e.stats.RecentPackets))
 	copy(pktsCopy, e.stats.RecentPackets)
 
+	var bannedCopy []ips.BannedHost
+	if e.ipsMgr != nil {
+		bannedCopy = e.ipsMgr.GetBannedHosts()
+	}
+
 	return Stats{
 		StartTime:       e.stats.StartTime,
 		TotalPackets:    e.stats.TotalPackets,
@@ -227,12 +242,20 @@ func (e *Engine) GetStats() Stats {
 		RecentPackets:   pktsCopy,
 		BytesPerSec:     e.stats.BytesPerSec,
 		PktsPerSec:      e.stats.PktsPerSec,
+		BannedHosts:     bannedCopy,
 	}
+}
+
+func (e *Engine) GetIPS() *ips.Manager {
+	return e.ipsMgr
 }
 
 func (e *Engine) Stop() {
 	if e.running {
 		close(e.stopChan)
+	}
+	if e.ipsMgr != nil {
+		e.ipsMgr.Cleanup()
 	}
 	if e.capture != nil {
 		e.capture.Close()
