@@ -1,32 +1,28 @@
-# Virtual environment
-.venv/
-env/
-venv/
-
-# Python cache
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
+# Binaries & build artifacts
+bin/
 build/
+*.o
+*.a
+*.so
+coremonitor
 
-# Testing & Linters
-.pytest_cache/
-.coverage
-htmlcov/
+# Go
+vendor/
 
-# Captured data (pcap & csv)
+# Python / uv (scripts only)
+.venv/
+__pycache__/
+*.pyc
+
+# Captures & logs
 captures/*.pcap
 captures/*.csv
 !captures/.gitkeep
 
-# IDE & Editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Docker / InfluxDB local data
+# Docker volumes
 influxdb-data/
 grafana-data/
 
+# IDE
+.vscode/
+.idea/
