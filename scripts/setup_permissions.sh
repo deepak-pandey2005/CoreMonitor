@@ -1,21 +1,26 @@
 #!/usr/bin/env bash
-# Helper script to configure packet sniffing permissions on Linux without requiring full root access
+# Helper script to configure packet sniffing permissions on Linux for uv and virtualenv
 
 set -e
 
-echo "=== CoreMonitor Network Permissions Setup ==="
+echo "=== CoreMonitor Network Permissions Setup (uv) ==="
 echo ""
-echo "Choose an option to grant packet sniffing capabilities:"
-echo "1) Grant CAP_NET_RAW and CAP_NET_ADMIN to Python virtual environment"
-echo "2) Add current user to 'wireshark' group"
-echo ""
+
+# Ensure uv virtual environment exists
+if [ ! -d ".venv" ]; then
+    echo "[*] Creating virtual environment with uv..."
+    uv sync
+fi
 
 VENV_PYTHON="$(pwd)/.venv/bin/python"
 
 if [ -f "$VENV_PYTHON" ]; then
-    echo "[*] Setting capabilities on: $VENV_PYTHON"
+    echo "[*] Setting CAP_NET_RAW and CAP_NET_ADMIN on: $VENV_PYTHON"
     sudo setcap cap_net_raw,cap_net_admin=eip "$VENV_PYTHON"
-    echo "[+] Done! You can now run CoreMonitor live without sudo: .venv/bin/python -m coremonitor live"
+    echo ""
+    echo "[+] Done! You can now run CoreMonitor live without sudo using uv:"
+    echo "    uv run coremonitor live -i wlan0"
 else
-    echo "[-] Virtual environment not found at .venv. Please create it first: python3 -m venv .venv"
+    echo "[-] Virtual environment python binary not found at $VENV_PYTHON"
+    exit 1
 fi

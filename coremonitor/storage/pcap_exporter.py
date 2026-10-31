@@ -67,3 +67,4 @@ class PcapExporter(BaseExporter):
             except Exception:
                 pass
             self.writer = None
+

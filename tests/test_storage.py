@@ -70,3 +70,4 @@ def test_pcap_exporter(tmp_path):
     # Verify readable by scapy
     read_pkts = scapy.rdpcap(str(pcap_files[0]))
     assert len(read_pkts) == 1
+

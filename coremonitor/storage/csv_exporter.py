@@ -136,3 +136,4 @@ class CSVExporter(BaseExporter):
                 pass
             self.alert_file = None
             self.alert_writer = None
+

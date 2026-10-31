@@ -147,3 +147,4 @@ class InfluxExporter(BaseExporter):
             except Exception:
                 pass
             self.client = None
+

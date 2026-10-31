@@ -2,6 +2,8 @@
 
 **CoreMonitor** is a lightweight Network Traffic Analyzer and Intrusion Detection System (IDS) designed to act as a proactive security guard for your local network. It sniffs live network packets across Wi-Fi or Ethernet interfaces, extracts deep packet metadata, identifies malicious behavior and traffic anomalies in real time, and exports metrics for visual dashboarding in Grafana and deep offline inspection in Wireshark.
 
+Built for modern Python development with **`uv`**.
+
 ---
 
 ## 🌟 Key Features
@@ -39,7 +41,7 @@ flowchart TD
         PCAP["Offline .pcap File"]
     end
 
-    subgraph CoreMonitor["CoreMonitor Engine"]
+    subgraph CoreMonitor["CoreMonitor Engine (Powered by uv)"]
         Sniff["Packet Capture Engine (AsyncSniffer / PcapReader)"]
         Parser["Packet Parser & Metadata Extractor"]
         IDS["Lightweight IDS Engine (Scans, Floods, DNS, Threat Feed)"]
@@ -72,31 +74,29 @@ flowchart TD
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start with `uv`
 
 ### 1. Installation
 
-Clone the repository and set up a Python virtual environment:
+Sync all project dependencies in a flash using **`uv`**:
 
 ```bash
 git clone https://github.com/deepak-pandey2005/CoreMonitor.git
 cd CoreMonitor
 
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
 ### 2. Network Capture Permissions (Linux)
 
-Packet capture on raw sockets requires either root privileges or the `CAP_NET_RAW` capability:
+Raw packet sniffing requires `CAP_NET_RAW` capability on the Python binary created by `uv`:
 
 ```bash
-# Option A: Grant network capabilities to virtual environment (recommended, no sudo needed thereafter)
+# Set network capabilities on uv environment (recommended, no sudo needed afterwards):
 sudo ./scripts/setup_permissions.sh
 
-# Option B: Run commands with sudo
-sudo .venv/bin/python -m coremonitor live -i wlan0
+# Or run with sudo:
+sudo uv run coremonitor live -i wlan0
 ```
 
 ---
@@ -108,17 +108,17 @@ sudo .venv/bin/python -m coremonitor live -i wlan0
 Start capturing traffic from your Wi-Fi interface (`wlan0`):
 
 ```bash
-.venv/bin/python -m coremonitor live -i wlan0
+uv run coremonitor live -i wlan0
 ```
 
-To run in headless / background mode (without the interactive TUI):
+To run in headless / background daemon mode (plain logging):
 ```bash
-.venv/bin/python -m coremonitor live -i wlan0 --no-tui
+uv run coremonitor live -i wlan0 --no-tui
 ```
 
 Apply a BPF filter (e.g. monitor only HTTP/HTTPS traffic):
 ```bash
-.venv/bin/python -m coremonitor live -i wlan0 --bpf "tcp port 80 or tcp port 443"
+uv run coremonitor live -i wlan0 --bpf "tcp port 80 or tcp port 443"
 ```
 
 ### Offline PCAP Inspection
@@ -126,7 +126,7 @@ Apply a BPF filter (e.g. monitor only HTTP/HTTPS traffic):
 Deeply inspect an existing `.pcap` capture file without needing root privileges:
 
 ```bash
-.venv/bin/python -m coremonitor pcap tests/data/sample.pcap --no-influx
+uv run coremonitor pcap tests/data/sample.pcap --no-influx
 ```
 
 ### Simulate Traffic & Security Scenarios
@@ -134,8 +134,8 @@ Deeply inspect an existing `.pcap` capture file without needing root privileges:
 CoreMonitor includes a built-in traffic generator that synthesizes normal web requests alongside simulated attacks (SYN port scans, Xmas scans, Null scans, Telnet exposures, Metasploit listeners, DNS tunneling anomalies, and ICMP floods):
 
 ```bash
-.venv/bin/python scripts/simulate_traffic.py -o captures/sample_attack.pcap
-.venv/bin/python -m coremonitor pcap captures/sample_attack.pcap --no-influx
+uv run scripts/simulate_traffic.py -o captures/sample_attack.pcap
+uv run coremonitor pcap captures/sample_attack.pcap --no-influx
 ```
 
 ---
@@ -157,7 +157,7 @@ This starts:
 
 ### Run CoreMonitor with InfluxDB Export Enabled:
 ```bash
-.venv/bin/python -m coremonitor live -i wlan0
+uv run coremonitor live -i wlan0
 ```
 
 ---
@@ -209,10 +209,10 @@ ids:
 
 ## 🧪 Running Unit Tests
 
-Run the test suite covering parsers, IDS rules, and file exporters:
+Run the test suite with `uv`:
 
 ```bash
-.venv/bin/pytest
+uv run pytest -v
 ```
 
 ---

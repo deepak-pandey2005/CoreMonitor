@@ -47,3 +47,4 @@ def test_parse_broadcast():
     meta = PacketParser.parse(pkt)
 
     assert meta.is_broadcast is True
+

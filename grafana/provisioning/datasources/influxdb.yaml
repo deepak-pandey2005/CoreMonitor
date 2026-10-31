@@ -14,3 +14,4 @@ datasources:
       token: coremonitor-super-secret-auth-token
     isDefault: true
     editable: true
+

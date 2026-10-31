@@ -164,3 +164,4 @@ class PacketParser:
             dns_type=dns_type,
             is_broadcast=is_broadcast,
         )
+
