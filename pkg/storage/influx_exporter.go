@@ -116,6 +116,15 @@ func (exp *InfluxExporter) WritePacket(meta *cbridge.PacketMeta) {
 		exp.buffer = append(exp.buffer, dnsLine)
 	}
 
+	if meta.TLSSNI != "" {
+		sniLine := fmt.Sprintf("tls_activity,client_ip=%s,sni_domain=%s count=1i %d",
+			escapeTag(meta.SrcIP),
+			escapeTag(meta.TLSSNI),
+			meta.Timestamp.UnixNano(),
+		)
+		exp.buffer = append(exp.buffer, sniLine)
+	}
+
 	if len(exp.buffer) >= exp.cfg.InfluxDB.BatchSize {
 		go exp.Flush()
 	}

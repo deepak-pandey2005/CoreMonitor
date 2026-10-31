@@ -15,6 +15,18 @@ def generate_scenario_packets() -> List[scapy.Packet]:
     print("[*] Generating benign traffic (HTTP, HTTPS, DNS)...")
     packets.append(Ether() / IP(src="192.168.1.105", dst="142.250.190.46") / TCP(sport=51234, dport=443, flags="PA") / b"TLS Application Data payload")
     packets.append(Ether() / IP(src="142.250.190.46", dst="192.168.1.105") / TCP(sport=443, dport=51234, flags="A"))
+
+    # Synthetic TLS Client Hello with SNI "github.com"
+    tls_payload = (
+        b"\x16\x03\x01\x00\x80\x01\x00\x00\x7c\x03\x03"
+        + b"\x00" * 32  # random
+        + b"\x00"       # session ID len
+        + b"\x00\x02\xc0\x2f"  # cipher suites
+        + b"\x01\x00"   # compression
+        + b"\x00\x13"   # ext len
+        + b"\x00\x00\x00\x0f\x00\x0d\x00\x00\x0a" + b"github.com"
+    )
+    packets.append(Ether() / IP(src="192.168.1.105", dst="140.82.112.4") / TCP(sport=51238, dport=443, flags="PA") / tls_payload)
     packets.append(Ether() / IP(src="192.168.1.105", dst="93.184.216.34") / TCP(sport=51235, dport=80, flags="PA") / b"GET /index.html HTTP/1.1\r\nHost: example.com\r\n\r\n")
     packets.append(Ether() / IP(src="192.168.1.105", dst="8.8.8.8") / UDP(sport=54321, dport=53) / DNS(rd=1, qd=DNSQR(qname="google.com")))
 

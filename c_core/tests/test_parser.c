@@ -83,10 +83,91 @@ void test_parse_udp_dns() {
     printf("✓ test_parse_udp_dns passed\n");
 }
 
+void test_parse_tls_sni() {
+    uint8_t buffer[256] = {0};
+    struct ether_header *eth = (struct ether_header*)buffer;
+    eth->ether_type = htons(ETHERTYPE_IP);
+
+    struct iphdr *ip = (struct iphdr*)(buffer + sizeof(struct ether_header));
+    ip->ihl = 5;
+    ip->version = 4;
+    ip->protocol = IPPROTO_TCP;
+    inet_pton(AF_INET, "192.168.1.100", &ip->saddr);
+    inet_pton(AF_INET, "140.82.112.4", &ip->daddr);
+
+    struct tcphdr *tcp = (struct tcphdr*)(buffer + sizeof(struct ether_header) + 20);
+    tcp->source = htons(52345);
+    tcp->dest = htons(443);
+    tcp->doff = 5;
+
+    uint8_t *tls = buffer + sizeof(struct ether_header) + 20 + 20;
+    size_t offset = 0;
+    tls[offset++] = 0x16; // Handshake record
+    tls[offset++] = 0x03; // TLS 1.0
+    tls[offset++] = 0x01;
+    tls[offset++] = 0x00; // Length high
+    tls[offset++] = 0x80; // Length low (dummy)
+    tls[offset++] = 0x01; // Client Hello
+    tls[offset++] = 0x00; // Handshake len high
+    tls[offset++] = 0x00;
+    tls[offset++] = 0x7c; // Handshake len low
+    tls[offset++] = 0x03; // Client version TLS 1.2
+    tls[offset++] = 0x03;
+
+    // Random (32 bytes)
+    offset += 32;
+
+    // Session ID length = 0
+    tls[offset++] = 0x00;
+
+    // Cipher suites length = 2 (1 suite)
+    tls[offset++] = 0x00;
+    tls[offset++] = 0x02;
+    tls[offset++] = 0xc0;
+    tls[offset++] = 0x2f;
+
+    // Compression methods length = 1
+    tls[offset++] = 0x01;
+    tls[offset++] = 0x00; // null compression
+
+    // Extensions length = 19
+    tls[offset++] = 0x00;
+    tls[offset++] = 0x13;
+
+    // Extension 0x0000 (server_name)
+    tls[offset++] = 0x00;
+    tls[offset++] = 0x00;
+    // Extension length = 15
+    tls[offset++] = 0x00;
+    tls[offset++] = 0x0f;
+    // Server name list length = 13
+    tls[offset++] = 0x00;
+    tls[offset++] = 0x0d;
+    // Name type = 0 (host_name)
+    tls[offset++] = 0x00;
+    // Host name length = 10 ("github.com")
+    tls[offset++] = 0x00;
+    tls[offset++] = 0x0a;
+    memcpy(tls + offset, "github.com", 10);
+    offset += 10;
+
+    size_t total_len = sizeof(struct ether_header) + 20 + 20 + offset;
+
+    cmonitor_packet_meta_t meta;
+    int res = cmonitor_parse_packet(buffer, total_len, total_len, 3000, 0, &meta);
+    assert(res == 0);
+    assert(strcmp(meta.protocol, "TCP") == 0);
+    assert(meta.dst_port == 443);
+    assert(strcmp(meta.service, "HTTPS") == 0);
+    assert(strcmp(meta.tls_sni, "github.com") == 0);
+    printf("✓ test_parse_tls_sni passed (Extracted SNI: %s)\n", meta.tls_sni);
+}
+
 int main() {
     printf("Running C Core Parser Tests...\n");
     test_parse_tcp_syn();
     test_parse_udp_dns();
+    test_parse_tls_sni();
     printf("All C Parser tests passed successfully!\n");
     return 0;
 }

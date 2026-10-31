@@ -62,7 +62,7 @@ func (exp *CSVExporter) rotateFiles() error {
 		_ = exp.pktWriter.Write([]string{
 			"timestamp", "src_ip", "dst_ip", "src_country", "dst_country",
 			"src_port", "dst_port", "protocol", "service", "packet_size", "payload_size",
-			"tcp_flags", "dns_query", "dns_type", "src_mac", "dst_mac",
+			"tcp_flags", "dns_query", "dns_type", "tls_sni", "src_mac", "dst_mac",
 		})
 		exp.pktWriter.Flush()
 	}
@@ -116,6 +116,7 @@ func (exp *CSVExporter) WritePacket(meta *cbridge.PacketMeta) {
 		meta.TCPFlagsStr,
 		meta.DNSQuery,
 		strconv.Itoa(int(meta.DNSType)),
+		meta.TLSSNI,
 		meta.SrcMAC,
 		meta.DstMAC,
 	})

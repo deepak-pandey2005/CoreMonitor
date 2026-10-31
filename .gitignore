@@ -5,6 +5,8 @@ build/
 *.a
 *.so
 /coremonitor
+c_core/tests/test_parser
+c_core/tests/test_ids
 
 # Go
 vendor/

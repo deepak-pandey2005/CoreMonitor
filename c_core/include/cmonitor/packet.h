@@ -28,6 +28,7 @@ typedef struct {
     char tcp_flags_str[32];   /* Human-readable comma-delimited flags */
     char dns_query[256];
     uint16_t dns_type;
+    char tls_sni[256];        /* Extracted TLS Server Name Indication (SNI) */
     uint8_t is_broadcast;
 } cmonitor_packet_meta_t;
 

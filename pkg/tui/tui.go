@@ -153,10 +153,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				idx := len(m.cachedStats.RecentPackets) - 1 - m.packetCursor
 				if idx >= 0 && idx < len(m.cachedStats.RecentPackets) {
 					p := m.cachedStats.RecentPackets[idx]
-					m.detailContent = fmt.Sprintf("PACKET DETAILS:\n\nTimestamp:   %s\nSource:      %s %s:%d (%s - %s)\nDestination: %s %s:%d (%s - %s)\nProtocol:    %s\nService:     %s\nSize:        %d bytes\nPayload:     %d bytes\nTCP Flags:   %s\nDNS Query:   %s\nSrc MAC:     %s\nDst MAC:     %s\nBroadcast:   %t\n\n(Press ESC or Enter to close)",
+					m.detailContent = fmt.Sprintf("PACKET DETAILS:\n\nTimestamp:   %s\nSource:      %s %s:%d (%s - %s)\nDestination: %s %s:%d (%s - %s)\nProtocol:    %s\nService:     %s\nSize:        %d bytes\nPayload:     %d bytes\nTCP Flags:   %s\nTLS SNI:     %s\nDNS Query:   %s\nSrc MAC:     %s\nDst MAC:     %s\nBroadcast:   %t\n\n(Press ESC or Enter to close)",
 						p.Timestamp.Format(time.RFC3339Nano), p.SrcFlag, p.SrcIP, p.SrcPort, p.SrcCountry, p.SrcOrg,
 						p.DstFlag, p.DstIP, p.DstPort, p.DstCountry, p.DstOrg,
-						p.Protocol, p.Service, p.PacketSize, p.PayloadSize, p.TCPFlagsStr, p.DNSQuery, p.SrcMAC, p.DstMAC, p.IsBroadcast)
+						p.Protocol, p.Service, p.PacketSize, p.PayloadSize, p.TCPFlagsStr, p.TLSSNI, p.DNSQuery, p.SrcMAC, p.DstMAC, p.IsBroadcast)
 					m.showDetail = true
 				}
 			} else if m.activeTab == 2 && len(m.cachedStats.RecentAlerts) > 0 {
@@ -377,13 +377,14 @@ func (m Model) renderPackets() string {
 		if p.DstPort == 0 {
 			dst = fmt.Sprintf("%s %s", p.DstFlag, p.DstIP)
 		}
-		info := p.TCPFlagsStr
-		if p.DNSQuery != "" {
-			info = p.DNSQuery
+		extra := p.TCPFlagsStr
+		if p.TLSSNI != "" {
+			extra = "🔒 " + p.TLSSNI
+		} else if p.DNSQuery != "" {
+			extra = "🌐 " + p.DNSQuery
 		}
-
 		row := fmt.Sprintf("%s%-10s  %-21s  %-21s  %-6s %-12s %-6dB %s",
-			cursor, tStr, src, dst, p.Protocol, p.Service, p.PacketSize, info)
+			cursor, tStr, src, dst, p.Protocol, p.Service, p.PacketSize, extra)
 		lines = append(lines, rowStyle.Render(row))
 	}
 

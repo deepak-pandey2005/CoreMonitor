@@ -88,6 +88,61 @@ static void parse_dns_query(const uint8_t *payload, size_t len, char *out_domain
     }
 }
 
+static void parse_tls_sni(const uint8_t *data, size_t len, char *out_sni, size_t max_len) {
+    out_sni[0] = '\0';
+    if (len < 44) return;
+
+    // Byte 0: 0x16 = TLS Handshake record
+    if (data[0] != 0x16) return;
+
+    // Byte 5: 0x01 = Client Hello message
+    if (data[5] != 0x01) return;
+
+    size_t offset = 43; // Points to Session ID Length
+    if (offset >= len) return;
+    uint8_t session_id_len = data[offset++];
+    offset += session_id_len;
+
+    // Cipher Suites Length
+    if (offset + 2 > len) return;
+    uint16_t cipher_suites_len = (data[offset] << 8) | data[offset + 1];
+    offset += 2 + cipher_suites_len;
+
+    // Compression Methods Length
+    if (offset + 1 > len) return;
+    uint8_t comp_len = data[offset++];
+    offset += comp_len;
+
+    // Extensions Length
+    if (offset + 2 > len) return;
+    uint16_t extensions_len = (data[offset] << 8) | data[offset + 1];
+    offset += 2;
+
+    size_t ext_end = offset + extensions_len;
+    if (ext_end > len) ext_end = len;
+
+    while (offset + 4 <= ext_end) {
+        uint16_t ext_type = (data[offset] << 8) | data[offset + 1];
+        uint16_t ext_len = (data[offset + 2] << 8) | data[offset + 3];
+        offset += 4;
+
+        if (offset + ext_len > ext_end) break;
+
+        // Extension 0x0000 = server_name (SNI)
+        if (ext_type == 0x0000 && ext_len >= 5) {
+            uint8_t name_type = data[offset + 2];
+            uint16_t name_len = (data[offset + 3] << 8) | data[offset + 4];
+            if (name_type == 0x00 && offset + 5 + name_len <= ext_end) {
+                size_t copy_len = name_len < (max_len - 1) ? name_len : (max_len - 1);
+                memcpy(out_sni, data + offset + 5, copy_len);
+                out_sni[copy_len] = '\0';
+                return;
+            }
+        }
+        offset += ext_len;
+    }
+}
+
 int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
                           int64_t sec, int64_t usec, cmonitor_packet_meta_t *out) {
     if (!data || !out) return -1;
@@ -159,6 +214,15 @@ int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
                 size_t payload_offset = l4_offset + tcp_hdr_len;
                 if (caplen > payload_offset) {
                     out->payload_size = caplen - payload_offset;
+
+                    // Extract TLS SNI from Client Hello
+                    if (out->dst_port == 443 || out->src_port == 443 || data[payload_offset] == 0x16) {
+                        parse_tls_sni(data + payload_offset, out->payload_size,
+                                      out->tls_sni, sizeof(out->tls_sni));
+                        if (out->tls_sni[0] != '\0' && out->service[0] == '\0') {
+                            strncpy(out->service, "HTTPS", sizeof(out->service) - 1);
+                        }
+                    }
                 }
             }
         } else if (ip->protocol == IPPROTO_UDP) {

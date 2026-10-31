@@ -40,6 +40,7 @@ type PacketMeta struct {
 	TCPFlagsStr string
 	DNSQuery    string
 	DNSType     uint16
+	TLSSNI      string
 	IsBroadcast bool
 
 	// GeoIP Enrichment
@@ -153,6 +154,7 @@ func (c *Capture) Next() (*PacketMeta, []byte, error) {
 		TCPFlagsStr: C.GoString(&cMeta.tcp_flags_str[0]),
 		DNSQuery:    C.GoString(&cMeta.dns_query[0]),
 		DNSType:     uint16(cMeta.dns_type),
+		TLSSNI:      C.GoString(&cMeta.tls_sni[0]),
 		IsBroadcast: cMeta.is_broadcast != 0,
 	}
 

@@ -7,6 +7,7 @@ C_SRCS = $(wildcard c_core/src/*.c)
 C_OBJS = $(C_SRCS:.c=.o)
 
 all: $(C_LIB) build-go
+build: all
 
 $(C_LIB): $(C_OBJS)
 	ar rcs $@ $^
@@ -29,4 +30,4 @@ clean:
 	rm -f c_core/src/*.o $(C_LIB) bin/coremonitor
 	$(MAKE) -C c_core/tests clean || true
 
-.PHONY: all build-go test-c test-go test clean
+.PHONY: all build build-go test-c test-go test clean
