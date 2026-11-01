@@ -110,6 +110,7 @@ flowchart TD
      - Enriches terminal TUI, packet details, CSV logs, and InfluxDB/Grafana metrics.
    - **Interactive Charmbracelet Bubbletea TUI**: Modern 5-tab terminal dashboard featuring:
      - `Tab` / `1-5`: Switch views between **Overview Dashboard**, **Live Packets**, **Security Alerts**, **IPS Jails**, and **Flow Conversations**.
+     - `/`: **Live BPF Filter Prompt**: Type Berkeley Packet Filters (e.g. `tcp and port 443`, `host 192.168.1.50`, `not broadcast`, or `clear`) to recompile and hot-reload `libpcap` on the fly without restarting.
      - `Space`: Instant **Pause / Resume** to inspect live packet bursts without losing your place.
      - `↑` / `↓`: Interactive row selection cursor.
      - `Enter`: Full packet, security alert, and bidirectional flow detail inspection modal.

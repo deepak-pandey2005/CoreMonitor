@@ -82,19 +82,28 @@ type Model struct {
 	flowCursor    int
 	showDetail    bool
 	detailContent string
+	filtering     bool
+	filterInput   string
+	filterError   string
+	activeFilter  string
 	width         int
 	height        int
 }
 
 func NewModel(eng *engine.Engine, iface string) Model {
+	activeBPF := ""
+	if eng != nil {
+		activeBPF = eng.GetBPFFilter()
+	}
 	return Model{
-		engine:      eng,
-		iface:       iface,
-		activeTab:   0,
-		paused:      false,
-		cachedStats: eng.GetStats(),
-		width:       100,
-		height:      30,
+		engine:       eng,
+		iface:        iface,
+		activeTab:    0,
+		paused:       false,
+		cachedStats:  eng.GetStats(),
+		activeFilter: activeBPF,
+		width:        100,
+		height:       30,
 	}
 }
 
@@ -112,10 +121,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		if m.filtering {
+			switch msg.String() {
+			case "esc":
+				m.filtering = false
+				m.filterError = ""
+				return m, nil
+			case "enter":
+				apply := strings.TrimSpace(m.filterInput)
+				if strings.EqualFold(apply, "clear") || strings.EqualFold(apply, "none") {
+					apply = ""
+				}
+				err := m.engine.SetBPFFilter(apply)
+				if err != nil {
+					m.filterError = err.Error()
+					return m, nil
+				}
+				m.activeFilter = apply
+				m.filtering = false
+				m.filterError = ""
+				return m, nil
+			case "backspace":
+				if len(m.filterInput) > 0 {
+					m.filterInput = m.filterInput[:len(m.filterInput)-1]
+				}
+				return m, nil
+			case "ctrl+u":
+				m.filterInput = ""
+				return m, nil
+			default:
+				if len(msg.String()) == 1 {
+					m.filterInput += msg.String()
+				}
+				return m, nil
+			}
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			m.engine.Stop()
 			return m, tea.Quit
+
+		case "/":
+			m.filtering = true
+			m.filterInput = m.activeFilter
+			m.filterError = ""
+			return m, nil
 
 		case "tab":
 			m.activeTab = (m.activeTab + 1) % 5
@@ -243,10 +294,16 @@ func (m Model) View() string {
 	}
 
 	uptime := time.Since(m.cachedStats.StartTime).Truncate(time.Second)
+
+	filterBadge := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).Render("BPF: [none]")
+	if m.activeFilter != "" {
+		filterBadge = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFFF")).Render(fmt.Sprintf("BPF: [%s]", m.activeFilter))
+	}
+
 	navRow := lipgloss.JoinHorizontal(lipgloss.Top,
 		lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...),
 		lipgloss.NewStyle().Width(m.width-60).Align(lipgloss.Right).Render(
-			fmt.Sprintf("Iface: %s  |  Uptime: %s  |  %s", m.iface, uptime, status),
+			fmt.Sprintf("%s  |  Iface: %s  |  Uptime: %s  |  %s", filterBadge, m.iface, uptime, status),
 		),
 	)
 	b.WriteString(navRow + "\n\n")
@@ -265,6 +322,23 @@ func (m Model) View() string {
 		b.WriteString(m.renderFlows())
 	}
 
+	// Dynamic BPF Filter prompt overlay
+	if m.filtering {
+		promptStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#00FFFF")).
+			Background(lipgloss.Color("#16213e")).
+			Padding(0, 1).
+			MarginTop(1)
+
+		promptText := fmt.Sprintf("🔍 BPF Filter (live pcap) > %s█\n(Enter: apply, ESC: cancel, type 'clear' to reset)", m.filterInput)
+		if m.filterError != "" {
+			errText := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF4444")).Render("\n❌ " + m.filterError)
+			promptText += errText
+		}
+		b.WriteString("\n" + promptStyle.Render(promptText))
+	}
+
 	// Modal detail overlay
 	if m.showDetail {
 		modal := lipgloss.NewStyle().
@@ -281,7 +355,7 @@ func (m Model) View() string {
 	footer := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#666666")).
 		MarginTop(1).
-		Render("  [Tab/1-5] Switch View  •  [Space] Pause/Resume  •  [↑/↓] Select  •  [Enter] Inspect  •  [q] Quit")
+		Render("  [/] Set BPF Filter  •  [Tab/1-5] Switch View  •  [Space] Pause/Resume  •  [↑/↓] Select  •  [Enter] Inspect  •  [q] Quit")
 	b.WriteString(footer)
 
 	return docStyle.Render(b.String())

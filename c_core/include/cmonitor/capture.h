@@ -18,6 +18,8 @@ cmonitor_capture_t* cmonitor_capture_open_offline(const char *filepath, const ch
 int cmonitor_capture_next(cmonitor_capture_t *cap, cmonitor_packet_meta_t *out_meta,
                           const uint8_t **out_raw_data, uint32_t *out_raw_len);
 
+int cmonitor_capture_set_bpf(cmonitor_capture_t *cap, const char *bpf_filter, char *errbuf);
+
 void cmonitor_capture_close(cmonitor_capture_t *cap);
 
 #ifdef __cplusplus

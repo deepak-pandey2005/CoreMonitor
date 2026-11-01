@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -27,6 +28,7 @@ type Stats struct {
 	BannedHosts     []ips.BannedHost
 	ActiveFlows     []*flow.Flow
 	FlowStats       flow.FlowStats
+	ActiveBPFFilter string
 }
 
 type ratePoint struct {
@@ -98,6 +100,7 @@ func NewEngine(cfg config.Config, capture *cbridge.Capture) (*Engine, error) {
 		stopChan:  make(chan struct{}),
 		stats: Stats{
 			StartTime:       time.Now(),
+			ActiveBPFFilter: cfg.Network.BPFFilter,
 			ProtocolCounts:  make(map[string]uint64),
 			TopTalkersBytes: make(map[string]uint64),
 			RecentAlerts:    make([]cbridge.Alert, 0, 50),
@@ -278,7 +281,27 @@ func (e *Engine) GetStats() Stats {
 		BannedHosts:     bannedCopy,
 		ActiveFlows:     activeFlows,
 		FlowStats:       fStats,
+		ActiveBPFFilter: e.stats.ActiveBPFFilter,
 	}
+}
+
+func (e *Engine) SetBPFFilter(filter string) error {
+	if e.capture == nil {
+		return errors.New("capture handle not open")
+	}
+	err := e.capture.SetBPFFilter(filter)
+	if err == nil {
+		e.mu.Lock()
+		e.stats.ActiveBPFFilter = filter
+		e.mu.Unlock()
+	}
+	return err
+}
+
+func (e *Engine) GetBPFFilter() string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.stats.ActiveBPFFilter
 }
 
 func (e *Engine) GetIPS() *ips.Manager {

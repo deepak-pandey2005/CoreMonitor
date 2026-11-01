@@ -68,6 +68,30 @@ func TestCaptureOfflineHTTPAndTLS(t *testing.T) {
 	}
 }
 
+func TestCaptureSetBPFFilter(t *testing.T) {
+	cap, err := OpenOffline("../../tests/fixtures/attack_sample.pcap", "")
+	if err != nil {
+		t.Fatalf("failed to open pcap: %v", err)
+	}
+	defer cap.Close()
+
+	// 1. Valid filter
+	if err := cap.SetBPFFilter("tcp and port 443"); err != nil {
+		t.Errorf("expected valid filter to succeed, got: %v", err)
+	}
+
+	// 2. Clear filter
+	if err := cap.SetBPFFilter(""); err != nil {
+		t.Errorf("expected empty filter to succeed, got: %v", err)
+	}
+
+	// 3. Invalid filter syntax
+	err = cap.SetBPFFilter("invalid syntax syntax 1234")
+	if err == nil {
+		t.Errorf("expected error on invalid BPF syntax, got nil")
+	}
+}
+
 const (
 	CMonitorTCPFIN = 0x01
 	CMonitorTCPSYN = 0x02

@@ -99,6 +99,26 @@ int cmonitor_capture_next(cmonitor_capture_t *cap, cmonitor_packet_meta_t *out_m
     }
 }
 
+int cmonitor_capture_set_bpf(cmonitor_capture_t *cap, const char *bpf_filter, char *errbuf) {
+    if (!cap || !cap->handle) {
+        if (errbuf) snprintf(errbuf, PCAP_ERRBUF_SIZE, "Capture handle is null");
+        return -1;
+    }
+    if (!bpf_filter || strlen(bpf_filter) == 0) {
+        struct bpf_program fp;
+        if (pcap_compile(cap->handle, &fp, "", 1, PCAP_NETMASK_UNKNOWN) == 0) {
+            if (pcap_setfilter(cap->handle, &fp) == -1) {
+                if (errbuf) snprintf(errbuf, PCAP_ERRBUF_SIZE, "BPF clear filter error: %s", pcap_geterr(cap->handle));
+                pcap_freecode(&fp);
+                return -1;
+            }
+            pcap_freecode(&fp);
+        }
+        return 0;
+    }
+    return apply_bpf(cap->handle, bpf_filter, errbuf);
+}
+
 void cmonitor_capture_close(cmonitor_capture_t *cap) {
     if (!cap) return;
     if (cap->handle) {

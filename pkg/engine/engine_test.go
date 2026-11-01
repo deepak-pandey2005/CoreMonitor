@@ -129,3 +129,37 @@ func TestEngineWebhookDispatch(t *testing.T) {
 		t.Errorf("expected webhook alerts to be received by mock server, got 0")
 	}
 }
+
+func TestEngineSetBPFFilter(t *testing.T) {
+	fixturePath := filepath.Join("..", "..", "tests", "fixtures", "attack_sample.pcap")
+	if _, err := os.Stat(fixturePath); err != nil {
+		t.Skipf("fixture %s not found", fixturePath)
+	}
+
+	cfg := *config.DefaultConfig()
+	cfg.Storage.CSVDir = t.TempDir()
+	cfg.Storage.PCAPDir = t.TempDir()
+	cfg.InfluxDB.Enabled = false
+
+	capHandle, err := cbridge.OpenOffline(fixturePath, "")
+	if err != nil {
+		t.Fatalf("failed to open fixture: %v", err)
+	}
+
+	eng, err := NewEngine(cfg, capHandle)
+	if err != nil {
+		t.Fatalf("failed to create engine: %v", err)
+	}
+	defer eng.Stop()
+
+	if err := eng.SetBPFFilter("tcp and port 80"); err != nil {
+		t.Errorf("failed to set valid BPF filter: %v", err)
+	}
+	if eng.GetBPFFilter() != "tcp and port 80" {
+		t.Errorf("expected active filter 'tcp and port 80', got %q", eng.GetBPFFilter())
+	}
+
+	if err := eng.SetBPFFilter("invalid bpf test syntax"); err == nil {
+		t.Errorf("expected error on invalid bpf syntax")
+	}
+}

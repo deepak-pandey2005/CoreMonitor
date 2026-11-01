@@ -174,6 +174,23 @@ func (c *Capture) Next() (*PacketMeta, []byte, error) {
 	return meta, rawCopy, nil
 }
 
+func (c *Capture) SetBPFFilter(filter string) error {
+	if c.handle == nil {
+		return errors.New("capture handle closed")
+	}
+	var cFilter *C.char
+	if filter != "" {
+		cFilter = C.CString(filter)
+		defer C.free(unsafe.Pointer(cFilter))
+	}
+	errbuf := make([]C.char, 256)
+	res := C.cmonitor_capture_set_bpf(c.handle, cFilter, &errbuf[0])
+	if res != 0 {
+		return fmt.Errorf("BPF error: %s", C.GoString(&errbuf[0]))
+	}
+	return nil
+}
+
 func (c *Capture) Close() {
 	if c.handle != nil {
 		C.cmonitor_capture_close(c.handle)
