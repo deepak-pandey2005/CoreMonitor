@@ -79,7 +79,13 @@ flowchart TD
    - **Application Association**: Correlates TLS SNI domains, HTTP requests (method, host, URI), and DNS query metadata with long-running flows.
    - **Configurable Idle & Active Timeouts**: Automated background janitor sweeps and flushes stale conversation sessions.
 
-4. **Modern Go Upper Layer (`pkg/`, `cmd/`)**
+4. **Multi-Channel Webhook Alert Dispatcher (`pkg/webhook/`)**
+   - **Non-Blocking Asynchronous Queue**: Dispatches alerts in the background via buffered worker pools without slowing packet capture or datapath throughput.
+   - **Discord Rich Embeds**: Formatted alert cards with threat severity badges (Red for `CRITICAL`, Orange for `HIGH`), attacker location flags, victim endpoint, threat signatures, and active defense status.
+   - **Slack & Telegram Integrations**: Structured Slack Block Kit messages and Telegram Markdown alerts.
+   - **Alert Deduplication & Cooldown**: Throttles alert bursts (e.g. max 1 alert per attacker IP and threat type per 30 seconds) to prevent webhook rate-limit bans.
+
+5. **Modern Go Upper Layer (`pkg/`, `cmd/`)**
    - High-throughput zero-copy CGO bridge.
    - **Multi-Format Storage**:
      - Standard `.pcap` files with automated time-based rotation.

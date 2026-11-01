@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/ips"
+	"github.com/deepak-pandey2005/CoreMonitor/pkg/webhook"
 	"gopkg.in/yaml.v3"
 )
 
@@ -54,6 +55,8 @@ type Config struct {
 		IdleTimeoutSeconds   int  `yaml:"idle_timeout_seconds"`
 		ActiveTimeoutSeconds int  `yaml:"active_timeout_seconds"`
 	} `yaml:"flow"`
+
+	Webhook webhook.Config `yaml:"webhook"`
 }
 
 func DefaultConfig() *Config {
@@ -92,6 +95,8 @@ func DefaultConfig() *Config {
 	cfg.Flow.Enabled = true
 	cfg.Flow.IdleTimeoutSeconds = 30
 	cfg.Flow.ActiveTimeoutSeconds = 120
+
+	cfg.Webhook = webhook.DefaultConfig()
 	return cfg
 }
 

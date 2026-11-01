@@ -1,9 +1,13 @@
 package engine
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/cbridge"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/config"
@@ -73,5 +77,55 @@ func TestEngineOfflinePCAPInspection(t *testing.T) {
 		if !alertTypes[exp] {
 			t.Errorf("missing expected alert type: %s", exp)
 		}
+	}
+}
+
+func TestEngineWebhookDispatch(t *testing.T) {
+	fixturePath := filepath.Join("..", "..", "tests", "fixtures", "attack_sample.pcap")
+	if _, err := os.Stat(fixturePath); err != nil {
+		t.Skipf("fixture %s not found", fixturePath)
+	}
+
+	var webhookCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&webhookCount, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	tempDir, err := os.MkdirTemp("", "cmonitor_webhook_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	cfg := *config.DefaultConfig()
+	cfg.Storage.CSVDir = tempDir
+	cfg.Storage.PCAPDir = tempDir
+	cfg.InfluxDB.Enabled = false
+	cfg.Webhook.Enabled = true
+	cfg.Webhook.DiscordURL = server.URL
+	cfg.Webhook.MinSeverity = "HIGH"
+	cfg.Webhook.CooldownSeconds = 1
+
+	capHandle, err := cbridge.OpenOffline(fixturePath, "")
+	if err != nil {
+		t.Fatalf("failed to open fixture PCAP: %v", err)
+	}
+
+	eng, err := NewEngine(cfg, capHandle)
+	if err != nil {
+		t.Fatalf("failed to create engine: %v", err)
+	}
+	defer eng.Stop()
+
+	if err := eng.ProcessLoop(); err != nil {
+		t.Fatalf("process loop error: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	if atomic.LoadInt32(&webhookCount) == 0 {
+		t.Errorf("expected webhook alerts to be received by mock server, got 0")
 	}
 }

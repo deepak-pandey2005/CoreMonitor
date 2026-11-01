@@ -10,6 +10,7 @@ import (
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/geoip"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/ips"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/storage"
+	"github.com/deepak-pandey2005/CoreMonitor/pkg/webhook"
 )
 
 type Stats struct {
@@ -39,6 +40,7 @@ type Engine struct {
 	ids     *cbridge.IDSEngine
 	ipsMgr  *ips.Manager
 	flowMgr *flow.Manager
+	webhookDisp *webhook.Dispatcher
 
 	csvExp    *storage.CSVExporter
 	pcapExp   *storage.PCAPExporter
@@ -84,14 +86,15 @@ func NewEngine(cfg config.Config, capture *cbridge.Capture) (*Engine, error) {
 	}
 
 	eng := &Engine{
-		cfg:       cfg,
-		capture:   capture,
-		ids:       cbridge.NewIDSEngine(idsCfg),
-		ipsMgr:    ipsMgr,
-		flowMgr:   flowMgr,
-		csvExp:    csvExp,
-		pcapExp:   pcapExp,
-		influxExp: influxExp,
+		cfg:         cfg,
+		capture:     capture,
+		ids:         cbridge.NewIDSEngine(idsCfg),
+		ipsMgr:      ipsMgr,
+		flowMgr:     flowMgr,
+		webhookDisp: webhook.NewDispatcher(cfg.Webhook),
+		csvExp:      csvExp,
+		pcapExp:     pcapExp,
+		influxExp:   influxExp,
 		stopChan:  make(chan struct{}),
 		stats: Stats{
 			StartTime:       time.Now(),
@@ -147,9 +150,15 @@ func (e *Engine) ProcessLoop() error {
 			alerts[i].DstCountry = dstLoc.CountryCode
 			alerts[i].DstFlag = dstLoc.Flag
 
+			jailed := false
 			// Active Defense (IPS)
 			if e.ipsMgr != nil {
-				e.ipsMgr.HandleAlert(alerts[i])
+				jailed = e.ipsMgr.HandleAlert(alerts[i])
+			}
+
+			// Webhook Alert Dispatch
+			if e.webhookDisp != nil {
+				e.webhookDisp.Dispatch(alerts[i], jailed)
 			}
 		}
 
@@ -286,6 +295,9 @@ func (e *Engine) Stop() {
 	}
 	if e.flowMgr != nil {
 		e.flowMgr.Close()
+	}
+	if e.webhookDisp != nil {
+		e.webhookDisp.Close()
 	}
 	if e.ipsMgr != nil {
 		e.ipsMgr.Cleanup()

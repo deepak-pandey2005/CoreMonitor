@@ -49,4 +49,13 @@ flow:
   idle_timeout_seconds: 30         # Evict flows idle for 30s
   active_timeout_seconds: 120      # Maximum active flow duration before emission
 
+webhook:
+  enabled: false                   # Push real-time alert notifications to Discord / Slack / Telegram
+  discord_url: ""                  # e.g. "https://discord.com/api/webhooks/YOUR_WEBHOOK_URL"
+  slack_url: ""                    # e.g. "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+  telegram_bot_token: ""           # e.g. "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+  telegram_chat_id: ""             # e.g. "-100123456789"
+  min_severity: "HIGH"             # "HIGH" or "CRITICAL"
+  cooldown_seconds: 30             # Suppress repetitive webhook notifications per (IP, threat_type)
+
 live_dashboard: true     # Render real-time terminal UI with statistics and alerts
