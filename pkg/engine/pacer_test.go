@@ -140,3 +140,4 @@ func TestReplayPacerStopInterrupt(t *testing.T) {
 		t.Errorf("stop did not interrupt promptly, elapsed: %v", elapsed)
 	}
 }
+
