@@ -12,6 +12,7 @@ import (
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/config"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/engine"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/geoip"
+	"github.com/deepak-pandey2005/CoreMonitor/pkg/metrics"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/tui"
 )
 
@@ -83,6 +84,19 @@ func runLive(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize monitor engine: %v\n", err)
 		os.Exit(1)
+	}
+
+	if cfg.Prometheus.Enabled {
+		promSrv := metrics.NewServer(metrics.Config{
+			Enabled:    cfg.Prometheus.Enabled,
+			ListenAddr: cfg.Prometheus.ListenAddr,
+			Endpoint:   cfg.Prometheus.Endpoint,
+		}, eng)
+		if err := promSrv.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to start Prometheus exporter: %v\n", err)
+		} else {
+			defer func() { _ = promSrv.Stop() }()
+		}
 	}
 
 	sigChan := make(chan os.Signal, 1)

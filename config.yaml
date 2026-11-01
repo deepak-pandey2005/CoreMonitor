@@ -58,4 +58,9 @@ webhook:
   min_severity: "HIGH"             # "HIGH" or "CRITICAL"
   cooldown_seconds: 30             # Suppress repetitive webhook notifications per (IP, threat_type)
 
+prometheus:
+  enabled: true                    # Expose native Prometheus scraping endpoint (/metrics)
+  listen_addr: "0.0.0.0:2112"      # Standard exporter port
+  endpoint: "/metrics"             # Metrics path
+
 live_dashboard: true     # Render real-time terminal UI with statistics and alerts

@@ -85,7 +85,19 @@ flowchart TD
    - **Slack & Telegram Integrations**: Structured Slack Block Kit messages and Telegram Markdown alerts.
    - **Alert Deduplication & Cooldown**: Throttles alert bursts (e.g. max 1 alert per attacker IP and threat type per 30 seconds) to prevent webhook rate-limit bans.
 
-5. **Modern Go Upper Layer (`pkg/`, `cmd/`)**
+5. **Native Prometheus Metrics Exporter (`pkg/metrics/`)**
+   - **Standard Prometheus Exposition Format (v0.0.4)**: Serves `/metrics` over an embedded HTTP server (default: `0.0.0.0:2112/metrics`).
+   - **Zero-Dependency Lightweight Implementation**: Exposes counters and gauges without bloated dependencies:
+     - `coremonitor_packets_total`: Counter of all processed packets.
+     - `coremonitor_bytes_total`: Counter of cumulative network byte volume.
+     - `coremonitor_protocol_packets_total{protocol="..."}`: Per-protocol packet breakdown.
+     - `coremonitor_packets_per_second` & `coremonitor_bytes_per_second`: Live instantaneous throughput gauges.
+     - `coremonitor_alerts_total{severity="...",alert_type="..."}`: Cumulative IDS threat counter.
+     - `coremonitor_ips_banned_hosts`: Active jailed attacker hosts.
+     - `coremonitor_active_flows` & `coremonitor_flows_total`: 5-tuple conversation flow telemetry.
+   - Built-in `/healthz` health-check endpoint for Kubernetes liveness/readiness probes.
+
+6. **Modern Go Upper Layer (`pkg/`, `cmd/`)**
    - High-throughput zero-copy CGO bridge.
    - **Multi-Format Storage**:
      - Standard `.pcap` files with automated time-based rotation.

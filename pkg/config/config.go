@@ -57,6 +57,12 @@ type Config struct {
 	} `yaml:"flow"`
 
 	Webhook webhook.Config `yaml:"webhook"`
+
+	Prometheus struct {
+		Enabled    bool   `yaml:"enabled"`
+		ListenAddr string `yaml:"listen_addr"`
+		Endpoint   string `yaml:"endpoint"`
+	} `yaml:"prometheus"`
 }
 
 func DefaultConfig() *Config {
@@ -97,6 +103,10 @@ func DefaultConfig() *Config {
 	cfg.Flow.ActiveTimeoutSeconds = 120
 
 	cfg.Webhook = webhook.DefaultConfig()
+
+	cfg.Prometheus.Enabled = true
+	cfg.Prometheus.ListenAddr = "0.0.0.0:2112"
+	cfg.Prometheus.Endpoint = "/metrics"
 	return cfg
 }
 
