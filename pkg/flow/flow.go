@@ -307,3 +307,4 @@ func (m *Manager) Close() {
 		close(m.stopChan)
 	}
 }
+

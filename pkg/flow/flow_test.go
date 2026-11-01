@@ -161,3 +161,4 @@ func TestTopFlowsSortingAndSummary(t *testing.T) {
 		t.Errorf("expected non-empty summary")
 	}
 }
+
