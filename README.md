@@ -62,6 +62,7 @@ flowchart TD
      - **Bandwidth Spikes**: Instantaneous byte rate threshold alerts.
      - **Suspicious Services**: Flags cleartext credentials (Telnet port 23, FTP port 21) and known attacker listener ports (Metasploit 4444, Back Orifice 31337).
      - **DNS Tunneling**: Identifies suspiciously long domain queries (> 60 characters).
+     - **ARP Spoofing & Cache Poisoning (MITM)**: Maintains a stateful dynamic IP-to-MAC mapping table to detect conflicting MAC addresses claiming existing IP ownership (`ARP_SPOOFING`), as well as rogue gratuitous ARP broadcasts (`GRATUITOUS_ARP`).
      - **Threat Intelligence**: Immediate matching against blacklisted IP feeds with alert cooldown suppression.
 
 2. **Active Defense: Intrusion Prevention System (IPS) (`pkg/ips/`)**

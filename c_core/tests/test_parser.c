@@ -206,12 +206,57 @@ static void test_parse_http_request() {
            meta.http_method, meta.http_host, meta.http_uri, meta.http_user_agent);
 }
 
+static void test_parse_arp_reply() {
+    uint8_t buffer[64] = {0};
+    struct ether_header *eth = (struct ether_header*)buffer;
+    eth->ether_type = htons(ETHERTYPE_ARP);
+
+    uint8_t *arp_ptr = buffer + sizeof(struct ether_header);
+    // hrd: 1 (Ethernet)
+    arp_ptr[0] = 0x00; arp_ptr[1] = 0x01;
+    // pro: 0x0800 (IPv4)
+    arp_ptr[2] = 0x08; arp_ptr[3] = 0x00;
+    // hln: 6, pln: 4
+    arp_ptr[4] = 0x06; arp_ptr[5] = 0x04;
+    // op: 2 (Reply)
+    arp_ptr[6] = 0x00; arp_ptr[7] = 0x02;
+
+    // Sender MAC: 00:0c:29:12:34:56
+    uint8_t sender_mac[6] = {0x00, 0x0c, 0x29, 0x12, 0x34, 0x56};
+    memcpy(arp_ptr + 8, sender_mac, 6);
+
+    // Sender IP: 192.168.1.1
+    inet_pton(AF_INET, "192.168.1.1", arp_ptr + 14);
+
+    // Target MAC: 00:0c:29:aa:bb:cc
+    uint8_t target_mac[6] = {0x00, 0x0c, 0x29, 0xaa, 0xbb, 0xcc};
+    memcpy(arp_ptr + 18, target_mac, 6);
+
+    // Target IP: 192.168.1.100
+    inet_pton(AF_INET, "192.168.1.100", arp_ptr + 24);
+
+    size_t total_len = sizeof(struct ether_header) + 28;
+
+    cmonitor_packet_meta_t meta;
+    int res = cmonitor_parse_packet(buffer, total_len, total_len, 5000, 0, &meta);
+    assert(res == 0);
+    assert(strcmp(meta.protocol, "ARP") == 0);
+    assert(strcmp(meta.service, "ARP-Reply") == 0);
+    assert(meta.arp_opcode == 2);
+    assert(strcmp(meta.src_ip, "192.168.1.1") == 0);
+    assert(strcmp(meta.dst_ip, "192.168.1.100") == 0);
+    assert(strcmp(meta.src_mac, "00:0c:29:12:34:56") == 0);
+    printf("✓ test_parse_arp_reply passed (Src: %s [%s] -> Dst: %s)\n",
+           meta.src_ip, meta.src_mac, meta.dst_ip);
+}
+
 int main() {
     printf("Running C Core Parser Tests...\n");
     test_parse_tcp_syn();
     test_parse_udp_dns();
     test_parse_tls_sni();
     test_parse_http_request();
+    test_parse_arp_reply();
     printf("All C Parser tests passed successfully!\n");
     return 0;
 }

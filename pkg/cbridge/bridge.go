@@ -45,6 +45,7 @@ type PacketMeta struct {
 	HTTPHost      string
 	HTTPURI       string
 	HTTPUserAgent string
+	ARPOpcode     uint16
 	IsBroadcast   bool
 
 	// GeoIP Enrichment
@@ -163,6 +164,7 @@ func (c *Capture) Next() (*PacketMeta, []byte, error) {
 		HTTPHost:      C.GoString(&cMeta.http_host[0]),
 		HTTPURI:       C.GoString(&cMeta.http_uri[0]),
 		HTTPUserAgent: C.GoString(&cMeta.http_user_agent[0]),
+		ARPOpcode:     uint16(cMeta.arp_opcode),
 		IsBroadcast:   cMeta.is_broadcast != 0,
 	}
 
@@ -258,12 +260,15 @@ func (ids *IDSEngine) Analyze(meta *PacketMeta) []Alert {
 	cMeta.packet_size = C.uint32_t(meta.PacketSize)
 	cMeta.payload_size = C.uint32_t(meta.PayloadSize)
 	cMeta.tcp_flags = C.uint8_t(meta.TCPFlags)
+	cMeta.arp_opcode = C.uint16_t(meta.ARPOpcode)
 	if meta.IsBroadcast {
 		cMeta.is_broadcast = 1
 	}
 
 	copyString(&cMeta.src_ip[0], meta.SrcIP, 64)
 	copyString(&cMeta.dst_ip[0], meta.DstIP, 64)
+	copyString(&cMeta.src_mac[0], meta.SrcMAC, 18)
+	copyString(&cMeta.dst_mac[0], meta.DstMAC, 18)
 	copyString(&cMeta.protocol[0], meta.Protocol, 16)
 	copyString(&cMeta.service[0], meta.Service, 32)
 	copyString(&cMeta.dns_query[0], meta.DNSQuery, 256)

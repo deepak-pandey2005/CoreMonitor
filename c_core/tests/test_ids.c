@@ -134,6 +134,57 @@ void test_ids_dns_tunneling() {
     printf("✓ test_ids_dns_tunneling passed\n");
 }
 
+void test_ids_arp_spoofing() {
+    cmonitor_ids_config_t cfg = cmonitor_ids_default_config();
+    cmonitor_ids_t *ids = cmonitor_ids_init(&cfg);
+
+    // 1. Legitimate Gateway ARP registration
+    cmonitor_packet_meta_t pkt1;
+    memset(&pkt1, 0, sizeof(pkt1));
+    pkt1.ts_sec = 2000;
+    snprintf(pkt1.protocol, sizeof(pkt1.protocol), "ARP");
+    snprintf(pkt1.src_ip, sizeof(pkt1.src_ip), "192.168.1.1");
+    snprintf(pkt1.src_mac, sizeof(pkt1.src_mac), "00:11:22:33:44:55");
+    snprintf(pkt1.dst_ip, sizeof(pkt1.dst_ip), "192.168.1.100");
+    pkt1.arp_opcode = 2; // Reply
+
+    cmonitor_alert_t alerts[8];
+    int count = cmonitor_ids_analyze(ids, &pkt1, alerts, 8);
+    assert(count == 0);
+
+    // 2. Attacker claims 192.168.1.1 with a different MAC (ARP Poisoning / Spoofing)
+    cmonitor_packet_meta_t pkt2;
+    memset(&pkt2, 0, sizeof(pkt2));
+    pkt2.ts_sec = 2001;
+    snprintf(pkt2.protocol, sizeof(pkt2.protocol), "ARP");
+    snprintf(pkt2.src_ip, sizeof(pkt2.src_ip), "192.168.1.1");
+    snprintf(pkt2.src_mac, sizeof(pkt2.src_mac), "aa:bb:cc:dd:ee:ff"); // Rogue MAC
+    pkt2.arp_opcode = 2;
+
+    count = cmonitor_ids_analyze(ids, &pkt2, alerts, 8);
+    assert(count == 1);
+    assert(strcmp(alerts[0].alert_type, "ARP_SPOOFING") == 0);
+    assert(alerts[0].severity == CMONITOR_SEV_CRITICAL);
+
+    // 3. Gratuitous ARP reply broadcast (src_ip == dst_ip)
+    cmonitor_packet_meta_t pkt3;
+    memset(&pkt3, 0, sizeof(pkt3));
+    pkt3.ts_sec = 2002;
+    snprintf(pkt3.protocol, sizeof(pkt3.protocol), "ARP");
+    snprintf(pkt3.src_ip, sizeof(pkt3.src_ip), "192.168.1.200");
+    snprintf(pkt3.src_mac, sizeof(pkt3.src_mac), "de:ad:be:ef:00:01");
+    snprintf(pkt3.dst_ip, sizeof(pkt3.dst_ip), "192.168.1.200");
+    pkt3.arp_opcode = 2;
+
+    count = cmonitor_ids_analyze(ids, &pkt3, alerts, 8);
+    assert(count == 1);
+    assert(strcmp(alerts[0].alert_type, "GRATUITOUS_ARP") == 0);
+    assert(alerts[0].severity == CMONITOR_SEV_HIGH);
+
+    cmonitor_ids_free(ids);
+    printf("✓ test_ids_arp_spoofing passed\n");
+}
+
 int main() {
     printf("Running C Core IDS Engine Tests...\n");
     test_ids_blacklisted_ip();
@@ -141,6 +192,7 @@ int main() {
     test_ids_stealth_scans();
     test_ids_port_scan_threshold();
     test_ids_dns_tunneling();
+    test_ids_arp_spoofing();
     printf("All C IDS Engine tests passed successfully!\n");
     return 0;
 }

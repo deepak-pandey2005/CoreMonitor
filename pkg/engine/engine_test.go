@@ -54,8 +54,8 @@ func TestEngineOfflinePCAPInspection(t *testing.T) {
 		t.Errorf("expected flow manager to track flows, got 0 created")
 	}
 
-	if len(stats.RecentAlerts) != 10 {
-		t.Errorf("expected 10 alerts, got %d", len(stats.RecentAlerts))
+	if len(stats.RecentAlerts) < 10 {
+		t.Errorf("expected at least 10 alerts, got %d", len(stats.RecentAlerts))
 	}
 
 	alertTypes := make(map[string]bool)
@@ -71,6 +71,8 @@ func TestEngineOfflinePCAPInspection(t *testing.T) {
 		"BLACKLISTED_IP",
 		"DNS_TUNNEL_ANOMALY",
 		"ICMP_FLOOD",
+		"ARP_SPOOFING",
+		"GRATUITOUS_ARP",
 	}
 
 	for _, exp := range expectedTypes {

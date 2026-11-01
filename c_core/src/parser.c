@@ -42,6 +42,18 @@ static const service_map_t WELL_KNOWN_SERVICES[] = {
     {0, NULL}
 };
 
+struct __attribute__((packed)) cmon_arp_hdr {
+    uint16_t hrd;
+    uint16_t pro;
+    uint8_t  hln;
+    uint8_t  pln;
+    uint16_t op;
+    uint8_t  sha[6];
+    uint8_t  spa[4];
+    uint8_t  tha[6];
+    uint8_t  tpa[4];
+};
+
 const char* cmonitor_get_service_name(uint16_t port) {
     for (size_t i = 0; WELL_KNOWN_SERVICES[i].service != NULL; ++i) {
         if (WELL_KNOWN_SERVICES[i].port == port) {
@@ -361,6 +373,21 @@ int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
     } else if (ether_type == ETHERTYPE_ARP) {
         strncpy(out->protocol, "ARP", sizeof(out->protocol) - 1);
         out->is_broadcast = 1;
+        if (caplen >= ip_offset + sizeof(struct cmon_arp_hdr)) {
+            const struct cmon_arp_hdr *arp = (const struct cmon_arp_hdr*)(data + ip_offset);
+            out->arp_opcode = ntohs(arp->op);
+            inet_ntop(AF_INET, arp->spa, out->src_ip, sizeof(out->src_ip));
+            inet_ntop(AF_INET, arp->tpa, out->dst_ip, sizeof(out->dst_ip));
+            format_mac(arp->sha, out->src_mac, sizeof(out->src_mac));
+            format_mac(arp->tha, out->dst_mac, sizeof(out->dst_mac));
+            if (out->arp_opcode == 1) {
+                strncpy(out->service, "ARP-Req", sizeof(out->service) - 1);
+            } else if (out->arp_opcode == 2) {
+                strncpy(out->service, "ARP-Reply", sizeof(out->service) - 1);
+            } else {
+                strncpy(out->service, "ARP", sizeof(out->service) - 1);
+            }
+        }
     }
 
     if (out->service[0] == '\0') {

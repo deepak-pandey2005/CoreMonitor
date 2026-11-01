@@ -9,6 +9,14 @@
 #define MAX_ICMP_EVENTS   64
 #define MAX_BW_EVENTS     64
 #define MAX_COOLDOWNS     256
+#define MAX_ARP_ENTRIES   256
+
+typedef struct {
+    char ip[64];
+    char mac[18];
+    int64_t last_seen_sec;
+    int in_use;
+} arp_entry_t;
 
 typedef struct {
     int64_t ts_sec;
@@ -55,6 +63,7 @@ struct cmonitor_ids {
     cmonitor_ids_config_t cfg;
     host_tracker_t hosts[MAX_TRACKED_HOSTS];
     cooldown_entry_t cooldowns[MAX_COOLDOWNS];
+    arp_entry_t arp_table[MAX_ARP_ENTRIES];
 };
 
 static const char* BLACKLIST_IPS[] = {
@@ -261,6 +270,61 @@ int cmonitor_ids_analyze(cmonitor_ids_t *ids, const cmonitor_packet_meta_t *meta
                 snprintf(msg, sizeof(msg), "TCP FIN stealth scan packet detected from %s", meta->src_ip);
                 add_alert(out_alerts, &alert_count, max_alerts, meta, CMONITOR_SEV_HIGH,
                           "FIN_SCAN", msg, "flags=FIN");
+            }
+        }
+    }
+
+    /* 4. ARP Spoofing / MITM Poisoning Detection */
+    if (strcmp(meta->protocol, "ARP") == 0 && meta->src_ip[0] != '\0' &&
+        strcmp(meta->src_ip, "0.0.0.0") != 0 && strcmp(meta->src_ip, "unknown") != 0) {
+
+        int found_idx = -1;
+        int empty_idx = -1;
+        for (int i = 0; i < MAX_ARP_ENTRIES; i++) {
+            if (ids->arp_table[i].in_use) {
+                if (strcmp(ids->arp_table[i].ip, meta->src_ip) == 0) {
+                    found_idx = i;
+                    break;
+                }
+            } else if (empty_idx == -1) {
+                empty_idx = i;
+            }
+        }
+
+        if (found_idx == -1 && empty_idx != -1) {
+            snprintf(ids->arp_table[empty_idx].ip, sizeof(ids->arp_table[empty_idx].ip), "%s", meta->src_ip);
+            snprintf(ids->arp_table[empty_idx].mac, sizeof(ids->arp_table[empty_idx].mac), "%s", meta->src_mac);
+            ids->arp_table[empty_idx].last_seen_sec = now_sec;
+            ids->arp_table[empty_idx].in_use = 1;
+        } else if (found_idx != -1) {
+            if (strcasecmp(ids->arp_table[found_idx].mac, meta->src_mac) != 0 &&
+                strcmp(meta->src_mac, "ff:ff:ff:ff:ff:ff") != 0 &&
+                strcmp(meta->src_mac, "00:00:00:00:00:00") != 0) {
+
+                if (!should_suppress(ids, "ARP_SPOOFING", meta->src_ip, now_sec)) {
+                    char msg[256];
+                    char det[256];
+                    snprintf(msg, sizeof(msg),
+                             "ARP spoofing / MITM detected: IP %s claimed by MAC %s (conflicts with known MAC %s)",
+                             meta->src_ip, meta->src_mac, ids->arp_table[found_idx].mac);
+                    snprintf(det, sizeof(det), "mitm=arp_cache_poisoning known_mac=%s rogue_mac=%s",
+                             ids->arp_table[found_idx].mac, meta->src_mac);
+                    add_alert(out_alerts, &alert_count, max_alerts, meta, CMONITOR_SEV_CRITICAL,
+                              "ARP_SPOOFING", msg, det);
+                }
+            } else {
+                ids->arp_table[found_idx].last_seen_sec = now_sec;
+            }
+        }
+
+        if (meta->arp_opcode == 2 && strcmp(meta->src_ip, meta->dst_ip) == 0) {
+            if (!should_suppress(ids, "GRATUITOUS_ARP", meta->src_ip, now_sec)) {
+                char msg[256];
+                snprintf(msg, sizeof(msg),
+                         "Gratuitous ARP reply broadcast from %s (%s): potential cache poisoning attempt",
+                         meta->src_ip, meta->src_mac);
+                add_alert(out_alerts, &alert_count, max_alerts, meta, CMONITOR_SEV_HIGH,
+                          "GRATUITOUS_ARP", msg, "gratuitous_arp=reply_broadcast");
             }
         }
     }
