@@ -289,6 +289,15 @@ func (m Model) View() string {
 	}
 
 	status := statusLive.Render("● LIVE")
+	if m.cachedStats.IsReplay {
+		if m.cachedStats.ReplayFinished {
+			status = lipgloss.NewStyle().Bold(true).Foreground(specialColor).Render("✔ REPLAY COMPLETE")
+		} else if m.cachedStats.ReplaySpeed > 0 {
+			status = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFFF")).Render(fmt.Sprintf("▶ REPLAY (%.1fx)", m.cachedStats.ReplaySpeed))
+		} else {
+			status = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFFF")).Render("▶ REPLAY (MAX)")
+		}
+	}
 	if m.paused {
 		status = statusPaused.Render("⏸ PAUSED")
 	}

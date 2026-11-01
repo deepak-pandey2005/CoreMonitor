@@ -165,3 +165,52 @@ func TestEngineSetBPFFilter(t *testing.T) {
 		t.Errorf("expected error on invalid bpf syntax")
 	}
 }
+
+func TestEngineOfflinePCAPReplayGovernor(t *testing.T) {
+	fixturePath := filepath.Join("..", "..", "tests", "fixtures", "attack_sample.pcap")
+	if _, err := os.Stat(fixturePath); err != nil {
+		t.Skipf("fixture %s not found", fixturePath)
+	}
+
+	cfg := *config.DefaultConfig()
+	cfg.Storage.CSVDir = t.TempDir()
+	cfg.Storage.PCAPDir = t.TempDir()
+	cfg.InfluxDB.Enabled = false
+
+	capHandle, err := cbridge.OpenOffline(fixturePath, "")
+	if err != nil {
+		t.Fatalf("failed to open fixture PCAP: %v", err)
+	}
+
+	eng, err := NewEngine(cfg, capHandle)
+	if err != nil {
+		t.Fatalf("failed to create engine: %v", err)
+	}
+	defer eng.Stop()
+
+	// Configure accelerated replay speed with 10ms max-delay ceiling
+	eng.SetReplaySpeed(50.0, 10*time.Millisecond)
+
+	if !eng.IsReplay() {
+		t.Errorf("expected eng.IsReplay() to be true")
+	}
+
+	if err := eng.ProcessLoop(); err != nil {
+		t.Fatalf("process loop error with pacer: %v", err)
+	}
+
+	if !eng.IsReplayFinished() {
+		t.Errorf("expected eng.IsReplayFinished() to be true upon EOF")
+	}
+
+	stats := eng.GetStats()
+	if stats.TotalPackets < 85 {
+		t.Errorf("expected all packets to be processed under replay pacer, got %d", stats.TotalPackets)
+	}
+	if !stats.ReplayFinished {
+		t.Errorf("expected stats.ReplayFinished to be true")
+	}
+	if stats.ReplaySpeed != 50.0 {
+		t.Errorf("expected stats.ReplaySpeed 50.0, got %f", stats.ReplaySpeed)
+	}
+}

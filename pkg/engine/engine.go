@@ -29,6 +29,9 @@ type Stats struct {
 	ActiveFlows     []*flow.Flow
 	FlowStats       flow.FlowStats
 	ActiveBPFFilter string
+	ReplaySpeed     float64
+	IsReplay        bool
+	ReplayFinished  bool
 }
 
 type ratePoint struct {
@@ -48,10 +51,14 @@ type Engine struct {
 	pcapExp   *storage.PCAPExporter
 	influxExp *storage.InfluxExporter
 
-	mu       sync.RWMutex
-	stats    Stats
-	stopChan chan struct{}
-	running  bool
+	mu         sync.RWMutex
+	stats      Stats
+	stopChan   chan struct{}
+	stopOnce   sync.Once
+	running    bool
+	pacer      *ReplayPacer
+	isReplay   bool
+	replayDone bool
 }
 
 func NewEngine(cfg config.Config, capture *cbridge.Capture) (*Engine, error) {
@@ -130,10 +137,21 @@ func (e *Engine) ProcessLoop() error {
 			continue
 		}
 		if err == cbridge.ErrEOF {
+			e.mu.Lock()
+			e.replayDone = true
+			e.stats.ReplayFinished = true
+			e.mu.Unlock()
 			return nil
 		}
 		if err != nil {
 			return err
+		}
+
+		// Replay Rate Governor Pacing
+		if e.pacer != nil {
+			if err := e.pacer.Pace(e.stopChan, meta.Timestamp); err != nil {
+				return nil
+			}
 		}
 
 		// GeoIP Enrichment
@@ -282,7 +300,53 @@ func (e *Engine) GetStats() Stats {
 		ActiveFlows:     activeFlows,
 		FlowStats:       fStats,
 		ActiveBPFFilter: e.stats.ActiveBPFFilter,
+		ReplaySpeed:     e.stats.ReplaySpeed,
+		IsReplay:        e.stats.IsReplay,
+		ReplayFinished:  e.stats.ReplayFinished,
 	}
+}
+
+// SetReplaySpeed configures or updates the PCAP playback speed multiplier and delay ceiling.
+func (e *Engine) SetReplaySpeed(speed float64, maxDelay time.Duration) {
+	e.mu.Lock()
+	e.isReplay = true
+	if e.pacer == nil {
+		e.pacer = NewReplayPacer(PacerConfig{
+			SpeedMultiplier: speed,
+			MaxDelay:        maxDelay,
+		})
+	} else {
+		e.pacer.SetSpeed(speed)
+	}
+	e.stats.ReplaySpeed = speed
+	e.stats.IsReplay = true
+	e.mu.Unlock()
+}
+
+// SetReplayPacer attaches an existing ReplayPacer instance.
+func (e *Engine) SetReplayPacer(pacer *ReplayPacer) {
+	e.mu.Lock()
+	e.pacer = pacer
+	e.isReplay = true
+	if pacer != nil {
+		e.stats.ReplaySpeed = pacer.GetSpeed()
+		e.stats.IsReplay = true
+	}
+	e.mu.Unlock()
+}
+
+// IsReplay reports if the engine is running in PCAP replay mode.
+func (e *Engine) IsReplay() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.isReplay
+}
+
+// IsReplayFinished reports if an offline PCAP has reached EOF.
+func (e *Engine) IsReplayFinished() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.replayDone
 }
 
 func (e *Engine) SetBPFFilter(filter string) error {
@@ -313,9 +377,9 @@ func (e *Engine) GetFlowManager() *flow.Manager {
 }
 
 func (e *Engine) Stop() {
-	if e.running {
+	e.stopOnce.Do(func() {
 		close(e.stopChan)
-	}
+	})
 	if e.flowMgr != nil {
 		e.flowMgr.Close()
 	}

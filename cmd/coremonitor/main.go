@@ -129,13 +129,23 @@ func runPCAP(args []string) {
 	fs := flag.NewFlagSet("pcap", flag.ExitOnError)
 	cfgFlag := fs.String("c", "config.yaml", "Path to config file")
 	noInfluxFlag := fs.Bool("no-influx", false, "Disable InfluxDB metrics export")
+	speedFlag := fs.String("speed", "0", "PCAP replay speed multiplier: 1x, 2x, 0.5x, 10x, or 0/max (unthrottled)")
+	maxDelayFlag := fs.Duration("max-delay", 5*time.Second, "Maximum pause duration between consecutive packets during replay")
+	tuiFlag := fs.Bool("tui", false, "Enable live interactive TUI dashboard during PCAP replay")
 	_ = fs.Parse(args)
 
 	if fs.NArg() < 1 {
 		fmt.Println("Usage: coremonitor pcap [options] <pcap-file>")
+		fs.PrintDefaults()
 		os.Exit(1)
 	}
 	pcapFile := fs.Arg(0)
+
+	speedMultiplier, err := engine.ParseSpeedMultiplier(*speedFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing -speed: %v\n", err)
+		os.Exit(1)
+	}
 
 	cfg, _ := config.LoadConfig(*cfgFlag)
 	if *noInfluxFlag {
@@ -154,7 +164,37 @@ func runPCAP(args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Analyzing PCAP file: %s ...\n", pcapFile)
+	if speedMultiplier > 0 {
+		eng.SetReplaySpeed(speedMultiplier, *maxDelayFlag)
+	}
+
+	// Interactive TUI replay mode
+	if *tuiFlag {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-sigChan
+			eng.Stop()
+			os.Exit(0)
+		}()
+
+		go func() {
+			_ = eng.ProcessLoop()
+		}()
+
+		if err := tui.RunBubbleTea(eng, fmt.Sprintf("pcap:%s", pcapFile)); err != nil {
+			fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+		}
+		eng.Stop()
+		return
+	}
+
+	if speedMultiplier > 0 {
+		fmt.Printf("Replaying PCAP file: %s (Speed: %.1fx, Max Delay: %v) ...\n", pcapFile, speedMultiplier, *maxDelayFlag)
+	} else {
+		fmt.Printf("Analyzing PCAP file: %s (Speed: unthrottled) ...\n", pcapFile)
+	}
+
 	startTime := time.Now()
 	_ = eng.ProcessLoop()
 	elapsed := time.Since(startTime)

@@ -109,6 +109,11 @@ flowchart TD
      - Differentiates LAN / RFC1918 traffic (`🏠 LAN`) from external public hosts.
      - Maps public IPs to country codes, country names, organization/ASN, and regional indicator flag emojis (e.g. 🇺🇸, 🇩🇪, 🇮🇳, 🇬🇧, 🇫🇷, 🇯🇵).
      - Enriches terminal TUI, packet details, CSV logs, and InfluxDB/Grafana metrics.
+   - **PCAP Replay Rate Controller & Time Warping**:
+     - Configurable playback rate governor: replay at exact real-time speed (`-speed 1x`), accelerated speed (`-speed 2x`, `10x`), slow motion (`-speed 0.5x`), or unthrottled maximum speed (`-speed max` / `0`).
+     - Microsecond-accurate pacing using original packet timestamps with engine processing delay self-compensation.
+     - Configurable idle gap ceiling (`-max-delay 5s`) to prevent long pauses during inactive capture intervals.
+     - Interactive replay animation: pipe replayed PCAP streams directly into the live Charm Bubbletea TUI dashboard with `-tui`.
    - **Interactive Charmbracelet Bubbletea TUI**: Modern 5-tab terminal dashboard featuring:
      - `Tab` / `1-5`: Switch views between **Overview Dashboard**, **Live Packets**, **Security Alerts**, **IPS Jails**, and **Flow Conversations**.
      - `/`: **Live BPF Filter Prompt**: Type Berkeley Packet Filters (e.g. `tcp and port 443`, `host 192.168.1.50`, `not broadcast`, or `clear`) to recompile and hot-reload `libpcap` on the fly without restarting.
@@ -173,12 +178,19 @@ Apply a custom BPF filter (e.g. monitor only HTTP/HTTPS traffic):
 ./bin/coremonitor live -i wlan0 -b "tcp port 80 or tcp port 443"
 ```
 
-### Offline PCAP Forensics
+### Offline PCAP Forensics & Replay Controller
 
-Deeply inspect an existing `.pcap` capture file:
+Deeply inspect an existing `.pcap` capture file at maximum speed or paced playback:
 
 ```bash
+# Maximum unthrottled forensic analysis
 ./bin/coremonitor pcap tests/fixtures/attack_sample.pcap --no-influx
+
+# Real-time 1x paced playback (simulates original traffic timing)
+./bin/coremonitor pcap -speed 1x tests/fixtures/attack_sample.pcap
+
+# 2x accelerated replay rendered in the interactive Bubbletea TUI
+./bin/coremonitor pcap -speed 2x -tui tests/fixtures/attack_sample.pcap
 ```
 
 ### Synthetic Traffic & Attack Simulation
