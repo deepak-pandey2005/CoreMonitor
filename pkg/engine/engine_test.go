@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -212,5 +213,59 @@ func TestEngineOfflinePCAPReplayGovernor(t *testing.T) {
 	}
 	if stats.ReplaySpeed != 50.0 {
 		t.Errorf("expected stats.ReplaySpeed 50.0, got %f", stats.ReplaySpeed)
+	}
+}
+
+func TestEngineSIEMExport(t *testing.T) {
+	fixturePath := filepath.Join("..", "..", "tests", "fixtures", "attack_sample.pcap")
+	if _, err := os.Stat(fixturePath); err != nil {
+		t.Skipf("fixture %s not found", fixturePath)
+	}
+
+	siemFile := filepath.Join(t.TempDir(), "engine_siem.log")
+
+	cfg := *config.DefaultConfig()
+	cfg.Storage.CSVDir = t.TempDir()
+	cfg.Storage.PCAPDir = t.TempDir()
+	cfg.InfluxDB.Enabled = false
+	cfg.SIEM.Enabled = true
+	cfg.SIEM.Format = "cef"
+	cfg.SIEM.Transport = "file"
+	cfg.SIEM.FilePath = siemFile
+	cfg.SIEM.MinSeverity = "LOW"
+
+	capHandle, err := cbridge.OpenOffline(fixturePath, "")
+	if err != nil {
+		t.Fatalf("failed to open fixture PCAP: %v", err)
+	}
+
+	eng, err := NewEngine(cfg, capHandle)
+	if err != nil {
+		t.Fatalf("failed to create engine: %v", err)
+	}
+
+	if err := eng.ProcessLoop(); err != nil {
+		t.Fatalf("process loop error: %v", err)
+	}
+
+	eng.Stop()
+
+	// Verify SIEM file contents
+	data, err := os.ReadFile(siemFile)
+	if err != nil {
+		t.Fatalf("failed reading siem log file: %v", err)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "CEF:0|CoreMonitor|CoreMonitor|1.0|") {
+		t.Errorf("expected CEF header in exported siem log: %s", content)
+	}
+	if !strings.Contains(content, "PORT_SCAN_SYN") && !strings.Contains(content, "ARP_SPOOFING") {
+		t.Errorf("missing expected alert signatures in siem log: %s", content)
+	}
+
+	stats := eng.GetStats()
+	if stats.SIEMStats.EventsSent == 0 {
+		t.Errorf("expected SIEM events sent > 0, got %d", stats.SIEMStats.EventsSent)
 	}
 }

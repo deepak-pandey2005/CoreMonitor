@@ -376,12 +376,17 @@ func (m Model) renderOverview() string {
 	// Flow Box
 	totalMB := float64(stats.TotalBytes) / (1024 * 1024)
 	rateKBs := stats.BytesPerSec / 1024
+	siemInfo := ""
+	if stats.SIEMStats.EventsSent > 0 {
+		siemInfo = fmt.Sprintf("\nSIEM Events:   %s", lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFFF")).Render(fmt.Sprintf("%d sent", stats.SIEMStats.EventsSent)))
+	}
 	flowContent := fmt.Sprintf(
-		"Total Packets: %s\nTotal Volume:  %.2f MB\nThroughput:    %s\nPacket Rate:   %.1f pkts/s",
+		"Total Packets: %s\nTotal Volume:  %.2f MB\nThroughput:    %s\nPacket Rate:   %.1f pkts/s%s",
 		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFFF")).Render(fmt.Sprintf("%d", stats.TotalPackets)),
 		totalMB,
 		lipgloss.NewStyle().Bold(true).Foreground(specialColor).Render(fmt.Sprintf("%.2f KB/s", rateKBs)),
 		stats.PktsPerSec,
+		siemInfo,
 	)
 	flowBox := boxStyle.Width(35).Render(headerTitleStyle.Render("FLOW METRICS\n") + flowContent)
 

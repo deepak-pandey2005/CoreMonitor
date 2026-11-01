@@ -196,7 +196,14 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	b.WriteString("# HELP coremonitor_flows_total Total conversation flows created over lifetime\n")
 	b.WriteString("# TYPE coremonitor_flows_total counter\n")
-	b.WriteString(fmt.Sprintf("coremonitor_flows_total %d\n", stats.FlowStats.TotalFlowsCreated))
+	b.WriteString(fmt.Sprintf("coremonitor_flows_total %d\n\n", stats.FlowStats.TotalFlowsCreated))
+
+	// SIEM Exporter Metrics
+	b.WriteString("# HELP coremonitor_siem_events_total Total SIEM CEF and Syslog events processed\n")
+	b.WriteString("# TYPE coremonitor_siem_events_total counter\n")
+	b.WriteString(fmt.Sprintf("coremonitor_siem_events_total{status=\"sent\"} %d\n", stats.SIEMStats.EventsSent))
+	b.WriteString(fmt.Sprintf("coremonitor_siem_events_total{status=\"dropped\"} %d\n", stats.SIEMStats.EventsDropped))
+	b.WriteString(fmt.Sprintf("coremonitor_siem_events_total{status=\"error\"} %d\n", stats.SIEMStats.SendErrors))
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

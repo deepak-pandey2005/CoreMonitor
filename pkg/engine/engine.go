@@ -10,6 +10,7 @@ import (
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/flow"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/geoip"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/ips"
+	"github.com/deepak-pandey2005/CoreMonitor/pkg/siem"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/storage"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/webhook"
 )
@@ -32,6 +33,7 @@ type Stats struct {
 	ReplaySpeed     float64
 	IsReplay        bool
 	ReplayFinished  bool
+	SIEMStats       siem.ExporterStats
 }
 
 type ratePoint struct {
@@ -40,12 +42,13 @@ type ratePoint struct {
 }
 
 type Engine struct {
-	cfg     config.Config
-	capture *cbridge.Capture
-	ids     *cbridge.IDSEngine
-	ipsMgr  *ips.Manager
-	flowMgr *flow.Manager
+	cfg         config.Config
+	capture     *cbridge.Capture
+	ids         *cbridge.IDSEngine
+	ipsMgr      *ips.Manager
+	flowMgr     *flow.Manager
 	webhookDisp *webhook.Dispatcher
+	siemExp     *siem.Exporter
 
 	csvExp    *storage.CSVExporter
 	pcapExp   *storage.PCAPExporter
@@ -101,6 +104,7 @@ func NewEngine(cfg config.Config, capture *cbridge.Capture) (*Engine, error) {
 		ipsMgr:      ipsMgr,
 		flowMgr:     flowMgr,
 		webhookDisp: webhook.NewDispatcher(cfg.Webhook),
+		siemExp:     siem.NewExporter(cfg.SIEM),
 		csvExp:      csvExp,
 		pcapExp:     pcapExp,
 		influxExp:   influxExp,
@@ -180,6 +184,11 @@ func (e *Engine) ProcessLoop() error {
 			// Webhook Alert Dispatch
 			if e.webhookDisp != nil {
 				e.webhookDisp.Dispatch(alerts[i], jailed)
+			}
+
+			// SIEM Alert Dispatch (CEF / Syslog)
+			if e.siemExp != nil {
+				e.siemExp.SendAlert(alerts[i], jailed)
 			}
 		}
 
@@ -286,6 +295,11 @@ func (e *Engine) GetStats() Stats {
 		fStats = e.flowMgr.GetStats()
 	}
 
+	var siemStats siem.ExporterStats
+	if e.siemExp != nil {
+		siemStats = e.siemExp.GetStats()
+	}
+
 	return Stats{
 		StartTime:       e.stats.StartTime,
 		TotalPackets:    e.stats.TotalPackets,
@@ -303,6 +317,7 @@ func (e *Engine) GetStats() Stats {
 		ReplaySpeed:     e.stats.ReplaySpeed,
 		IsReplay:        e.stats.IsReplay,
 		ReplayFinished:  e.stats.ReplayFinished,
+		SIEMStats:       siemStats,
 	}
 }
 
@@ -376,6 +391,10 @@ func (e *Engine) GetFlowManager() *flow.Manager {
 	return e.flowMgr
 }
 
+func (e *Engine) GetSIEMExporter() *siem.Exporter {
+	return e.siemExp
+}
+
 func (e *Engine) Stop() {
 	e.stopOnce.Do(func() {
 		close(e.stopChan)
@@ -385,6 +404,9 @@ func (e *Engine) Stop() {
 	}
 	if e.webhookDisp != nil {
 		e.webhookDisp.Close()
+	}
+	if e.siemExp != nil {
+		e.siemExp.Close()
 	}
 	if e.ipsMgr != nil {
 		e.ipsMgr.Cleanup()

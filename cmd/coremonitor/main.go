@@ -249,5 +249,10 @@ func runPCAP(args []string) {
 				f.Protocol, initEp, respEp, f.TotalPackets, f.TotalBytes, detail)
 		}
 	}
+
+	if stats.SIEMStats.EventsSent > 0 {
+		fmt.Printf("\n🌐 SIEM Events Dispatched: %d (Dropped: %d, Errors: %d)\n",
+			stats.SIEMStats.EventsSent, stats.SIEMStats.EventsDropped, stats.SIEMStats.SendErrors)
+	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/ips"
+	"github.com/deepak-pandey2005/CoreMonitor/pkg/siem"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/webhook"
 	"gopkg.in/yaml.v3"
 )
@@ -57,6 +58,7 @@ type Config struct {
 	} `yaml:"flow"`
 
 	Webhook webhook.Config `yaml:"webhook"`
+	SIEM    siem.Config    `yaml:"siem"`
 
 	Prometheus struct {
 		Enabled    bool   `yaml:"enabled"`
@@ -103,6 +105,7 @@ func DefaultConfig() *Config {
 	cfg.Flow.ActiveTimeoutSeconds = 120
 
 	cfg.Webhook = webhook.DefaultConfig()
+	cfg.SIEM = siem.DefaultConfig()
 
 	cfg.Prometheus.Enabled = true
 	cfg.Prometheus.ListenAddr = "0.0.0.0:2112"

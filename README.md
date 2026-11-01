@@ -98,7 +98,16 @@ flowchart TD
      - `coremonitor_active_flows` & `coremonitor_flows_total`: 5-tuple conversation flow telemetry.
    - Built-in `/healthz` health-check endpoint for Kubernetes liveness/readiness probes.
 
-6. **Modern Go Upper Layer (`pkg/`, `cmd/`)**
+6. **Enterprise SIEM Exporter: CEF & Syslog (`pkg/siem/`)**
+   - **ArcSight Common Event Format (CEF:0)**: Generates standard formatted CEF alert events (`CEF:0|CoreMonitor|CoreMonitor|1.0|<AlertType>|<Message>|<Severity>|<Extensions>`) with normalized extension attributes (`src`, `dst`, `spt`, `dpt`, `proto`, `act`, `cat`, `rt`, `shost`, `dhost`, `msg`).
+   - **RFC 3164 & RFC 5424 Syslog Transport**: Encapsulates CEF events into standard RFC 3164 Syslog headers for seamless ingestion into **Splunk**, **Wazuh**, **Elasticsearch / Logstash**, and **Graylog**.
+   - **Multi-Transport Support**:
+     - `udp`: Ultra-fast non-blocking fire-and-forget datagram streaming.
+     - `tcp`: Reliable connection-oriented transport with automated backoff reconnection.
+     - `file`: Persistent audit log output (e.g. `captures/siem.log`) for Filebeat or Promtail forwarders.
+   - **Non-Blocking Architecture**: Dedicated buffered channel queue and worker pool ensuring zero packet processing latency overhead.
+
+7. **Modern Go Upper Layer (`pkg/`, `cmd/`)**
    - High-throughput zero-copy CGO bridge.
    - **Multi-Format Storage**:
      - Standard `.pcap` files with automated time-based rotation.

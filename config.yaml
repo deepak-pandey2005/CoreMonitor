@@ -58,6 +58,15 @@ webhook:
   min_severity: "HIGH"             # "HIGH" or "CRITICAL"
   cooldown_seconds: 30             # Suppress repetitive webhook notifications per (IP, threat_type)
 
+siem:
+  enabled: false                   # Stream alerts in CEF / Syslog to SIEM (Splunk, Wazuh, Elastic)
+  format: "cef"                    # "cef" (ArcSight/Splunk), "syslog-cef" (RFC 3164 with CEF), or "rfc5424"
+  transport: "udp"                 # "udp", "tcp", or "file"
+  address: "127.0.0.1:514"         # SIEM host:port (for udp/tcp)
+  file_path: "captures/siem.log"   # Destination log file (when transport is "file")
+  facility: 16                     # Syslog facility (16 = local0, 4 = auth)
+  min_severity: "LOW"              # Minimum alert severity: "LOW", "MEDIUM", "HIGH", "CRITICAL"
+
 prometheus:
   enabled: true                    # Expose native Prometheus scraping endpoint (/metrics)
   listen_addr: "0.0.0.0:2112"      # Standard exporter port
