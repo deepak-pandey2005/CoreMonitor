@@ -79,6 +79,7 @@ type Model struct {
 	cachedStats   engine.Stats
 	packetCursor  int
 	alertCursor   int
+	flowCursor    int
 	showDetail    bool
 	detailContent string
 	width         int
@@ -117,10 +118,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "tab":
-			m.activeTab = (m.activeTab + 1) % 4
+			m.activeTab = (m.activeTab + 1) % 5
 
 		case "shift+tab":
-			m.activeTab = (m.activeTab + 3) % 4
+			m.activeTab = (m.activeTab + 4) % 5
 
 		case "1":
 			m.activeTab = 0
@@ -130,6 +131,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeTab = 2
 		case "4":
 			m.activeTab = 3
+		case "5":
+			m.activeTab = 4
 
 		case " ":
 			m.paused = !m.paused
@@ -139,6 +142,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.packetCursor--
 			} else if m.activeTab == 2 && m.alertCursor > 0 {
 				m.alertCursor--
+			} else if m.activeTab == 4 && m.flowCursor > 0 {
+				m.flowCursor--
 			}
 
 		case "down", "j":
@@ -146,6 +151,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.packetCursor++
 			} else if m.activeTab == 2 && m.alertCursor < len(m.cachedStats.RecentAlerts)-1 {
 				m.alertCursor++
+			} else if m.activeTab == 4 && m.flowCursor < len(m.cachedStats.ActiveFlows)-1 {
+				m.flowCursor++
 			}
 
 		case "enter":
@@ -174,6 +181,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						a.Protocol, a.Message, a.Details)
 					m.showDetail = true
 				}
+			} else if m.activeTab == 4 && len(m.cachedStats.ActiveFlows) > 0 {
+				idx := m.flowCursor
+				if idx >= 0 && idx < len(m.cachedStats.ActiveFlows) {
+					f := m.cachedStats.ActiveFlows[idx]
+					appMeta := ""
+					if f.TLSSNI != "" {
+						appMeta = fmt.Sprintf("\nTLS SNI:     %s", f.TLSSNI)
+					} else if f.HTTPMethod != "" {
+						appMeta = fmt.Sprintf("\nHTTP:        %s %s%s", f.HTTPMethod, f.HTTPHost, f.HTTPURI)
+					} else if f.DNSQuery != "" {
+						appMeta = fmt.Sprintf("\nDNS Query:   %s", f.DNSQuery)
+					}
+					m.detailContent = fmt.Sprintf("5-TUPLE FLOW CONVERSATION:\n\nProtocol:    %s\nService:     %s\nState:       %s\nDuration:    %s\n\nInitiator:   %s %s:%d\n  Packets:   %d\n  Volume:    %d bytes\n\nResponder:   %s %s:%d\n  Packets:   %d\n  Volume:    %d bytes\n\nTotals:\n  Packets:   %d\n  Volume:    %d bytes%s\n\n(Press ESC or Enter to close)",
+						f.Protocol, f.Service, f.State, f.Duration().Truncate(time.Millisecond),
+						f.SrcFlag, f.InitiatorIP, f.InitiatorPort, f.PacketsInitiator, f.BytesInitiator,
+						f.DstFlag, f.ResponderIP, f.ResponderPort, f.PacketsResponder, f.BytesResponder,
+						f.TotalPackets, f.TotalBytes, appMeta)
+					m.showDetail = true
+				}
 			}
 		}
 
@@ -200,6 +226,7 @@ func (m Model) View() string {
 		"2: Live Packets",
 		fmt.Sprintf("3: Alerts (%d)", len(m.cachedStats.RecentAlerts)),
 		fmt.Sprintf("4: IPS Jails (%d)", len(m.cachedStats.BannedHosts)),
+		fmt.Sprintf("5: Flows (%d)", m.cachedStats.FlowStats.ActiveFlows),
 	}
 	var renderedTabs []string
 	for i, t := range tabs {
@@ -234,6 +261,8 @@ func (m Model) View() string {
 		b.WriteString(m.renderAlerts())
 	case 3:
 		b.WriteString(m.renderIPS())
+	case 4:
+		b.WriteString(m.renderFlows())
 	}
 
 	// Modal detail overlay
@@ -252,7 +281,7 @@ func (m Model) View() string {
 	footer := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#666666")).
 		MarginTop(1).
-		Render("  [Tab/1-4] Switch View  •  [Space] Pause/Resume  •  [↑/↓] Select  •  [Enter] Inspect  •  [q] Quit")
+		Render("  [Tab/1-5] Switch View  •  [Space] Pause/Resume  •  [↑/↓] Select  •  [Enter] Inspect  •  [q] Quit")
 	b.WriteString(footer)
 
 	return docStyle.Render(b.String())
@@ -467,6 +496,52 @@ func (m Model) renderIPS() string {
 		row := fmt.Sprintf("   %-16s  %s %-3s  %-12s  %-12s  %s",
 			h.IP, loc.Flag, loc.CountryCode, sev, timeLeft, h.Reason)
 		lines = append(lines, row)
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) renderFlows() string {
+	flows := m.cachedStats.ActiveFlows
+	if len(flows) == 0 {
+		return "  No active conversation flows tracked. Listening on " + m.iface + "..."
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("   %-24s  %-24s  %-6s %-8s %-12s %-10s %-8s %s",
+		"INITIATOR", "RESPONDER", "PROTO", "SERVICE", "PKTS (F/R)", "VOLUME", "DURATION", "STATE / DETAILS"))
+
+	maxRows := 12
+	for i := 0; i < maxRows && i < len(flows); i++ {
+		f := flows[i]
+		cursor := "  "
+		rowStyle := lipgloss.NewStyle()
+		if i == m.flowCursor {
+			cursor = "> "
+			rowStyle = rowStyle.Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#2d3748"))
+		}
+
+		initEp := fmt.Sprintf("%s %s:%d", f.SrcFlag, f.InitiatorIP, f.InitiatorPort)
+		respEp := fmt.Sprintf("%s %s:%d", f.DstFlag, f.ResponderIP, f.ResponderPort)
+		pkts := fmt.Sprintf("%d / %d", f.PacketsInitiator, f.PacketsResponder)
+		vol := fmt.Sprintf("%.1f KB", float64(f.TotalBytes)/1024)
+		if f.TotalBytes < 1024 {
+			vol = fmt.Sprintf("%d B", f.TotalBytes)
+		}
+		dur := f.Duration().Truncate(time.Millisecond).String()
+
+		detail := f.State
+		if f.TLSSNI != "" {
+			detail += " 🔒 " + f.TLSSNI
+		} else if f.HTTPMethod != "" {
+			detail += " 🌐 " + f.HTTPMethod + " " + f.HTTPHost
+		} else if f.DNSQuery != "" {
+			detail += " 🌐 " + f.DNSQuery
+		}
+
+		row := fmt.Sprintf("%s%-24s  %-24s  %-6s %-8s %-12s %-10s %-8s %s",
+			cursor, initEp, respEp, f.Protocol, f.Service, pkts, vol, dur, detail)
+		lines = append(lines, rowStyle.Render(row))
 	}
 
 	return strings.Join(lines, "\n")

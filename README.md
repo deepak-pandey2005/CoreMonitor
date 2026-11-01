@@ -73,7 +73,13 @@ flowchart TD
    - **Built-in Whitelist**: Guarantees gateway, localhost (`127.0.0.1`), and management subnets are immune to lockout.
    - **Clean Teardown**: Automatically removes temporary DROP rules upon engine shutdown so your firewall tables remain clean.
 
-3. **Modern Go Upper Layer (`pkg/`, `cmd/`)**
+3. **5-Tuple Bidirectional Flow Aggregator (`pkg/flow/`)**
+   - **Canonical 5-Tuple Conversation Key**: Maps forward (`A -> B`) and reverse (`B -> A`) packets to unified bidirectional session objects.
+   - **Granular Flow Telemetry**: Tracks initiator vs. responder packet counts, byte volumes, flow lifespan/duration, and state transitions (`ACTIVE`, `CLOSED` on TCP FIN/RST, `TIMED_OUT`).
+   - **Application Association**: Correlates TLS SNI domains, HTTP requests (method, host, URI), and DNS query metadata with long-running flows.
+   - **Configurable Idle & Active Timeouts**: Automated background janitor sweeps and flushes stale conversation sessions.
+
+4. **Modern Go Upper Layer (`pkg/`, `cmd/`)**
    - High-throughput zero-copy CGO bridge.
    - **Multi-Format Storage**:
      - Standard `.pcap` files with automated time-based rotation.
@@ -84,12 +90,12 @@ flowchart TD
      - Differentiates LAN / RFC1918 traffic (`🏠 LAN`) from external public hosts.
      - Maps public IPs to country codes, country names, organization/ASN, and regional indicator flag emojis (e.g. 🇺🇸, 🇩🇪, 🇮🇳, 🇬🇧, 🇫🇷, 🇯🇵).
      - Enriches terminal TUI, packet details, CSV logs, and InfluxDB/Grafana metrics.
-   - **Interactive Charmbracelet Bubbletea TUI**: Modern multi-tabbed terminal dashboard featuring:
-    - `Tab` / `1-3`: Switch views between **Overview Dashboard**, **Live Packet Stream**, and **Security Alerts Log**.
-    - `Space`: Instant **Pause / Resume** to inspect live packet bursts without losing your place.
-    - `↑` / `↓`: Interactive row selection cursor.
-    - `Enter`: Full packet and security alert detail inspection modal.
-    - `q` / `Ctrl+C`: Clean shutdown.
+   - **Interactive Charmbracelet Bubbletea TUI**: Modern 5-tab terminal dashboard featuring:
+     - `Tab` / `1-5`: Switch views between **Overview Dashboard**, **Live Packets**, **Security Alerts**, **IPS Jails**, and **Flow Conversations**.
+     - `Space`: Instant **Pause / Resume** to inspect live packet bursts without losing your place.
+     - `↑` / `↓`: Interactive row selection cursor.
+     - `Enter`: Full packet, security alert, and bidirectional flow detail inspection modal.
+     - `q` / `Ctrl+C`: Clean shutdown.
 
 3. **Grafana & InfluxDB Visualization (`grafana/`)**
    - Pre-provisioned InfluxDB datasource and Grafana dashboard (`docker-compose.yml`).

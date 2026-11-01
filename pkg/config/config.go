@@ -48,6 +48,12 @@ type Config struct {
 	LiveDashboard bool `yaml:"live_dashboard"`
 
 	IPS ips.Config `yaml:"ips"`
+
+	Flow struct {
+		Enabled              bool `yaml:"enabled"`
+		IdleTimeoutSeconds   int  `yaml:"idle_timeout_seconds"`
+		ActiveTimeoutSeconds int  `yaml:"active_timeout_seconds"`
+	} `yaml:"flow"`
 }
 
 func DefaultConfig() *Config {
@@ -82,6 +88,10 @@ func DefaultConfig() *Config {
 
 	cfg.LiveDashboard = true
 	cfg.IPS = ips.DefaultConfig()
+
+	cfg.Flow.Enabled = true
+	cfg.Flow.IdleTimeoutSeconds = 30
+	cfg.Flow.ActiveTimeoutSeconds = 120
 	return cfg
 }
 

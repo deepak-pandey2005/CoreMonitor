@@ -44,4 +44,9 @@ ips:
     - "192.168.1.1"
     - "192.168.0.1"
 
+flow:
+  enabled: true                    # Aggregate 5-tuple bidirectional network conversation flows
+  idle_timeout_seconds: 30         # Evict flows idle for 30s
+  active_timeout_seconds: 120      # Maximum active flow duration before emission
+
 live_dashboard: true     # Render real-time terminal UI with statistics and alerts

@@ -46,6 +46,10 @@ func TestEngineOfflinePCAPInspection(t *testing.T) {
 		t.Errorf("expected at least 85 packets, got %d", stats.TotalPackets)
 	}
 
+	if stats.FlowStats.TotalFlowsCreated == 0 {
+		t.Errorf("expected flow manager to track flows, got 0 created")
+	}
+
 	if len(stats.RecentAlerts) != 10 {
 		t.Errorf("expected 10 alerts, got %d", len(stats.RecentAlerts))
 	}

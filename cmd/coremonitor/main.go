@@ -174,5 +174,26 @@ func runPCAP(args []string) {
 			fmt.Printf("  • [%s] %s %-15s | %s\n", h.Severity, loc.Flag, h.IP, h.Reason)
 		}
 	}
+
+	if len(stats.ActiveFlows) > 0 {
+		fmt.Printf("\n🔄 Top Conversation Flows (%d Total Flows Tracked):\n", stats.FlowStats.TotalFlowsCreated)
+		limit := 5
+		if len(stats.ActiveFlows) < limit {
+			limit = len(stats.ActiveFlows)
+		}
+		for i := 0; i < limit; i++ {
+			f := stats.ActiveFlows[i]
+			initEp := fmt.Sprintf("%s:%d", f.InitiatorIP, f.InitiatorPort)
+			respEp := fmt.Sprintf("%s:%d", f.ResponderIP, f.ResponderPort)
+			detail := f.Service
+			if f.TLSSNI != "" {
+				detail += " (SNI: " + f.TLSSNI + ")"
+			} else if f.HTTPMethod != "" {
+				detail += " (" + f.HTTPMethod + " " + f.HTTPHost + ")"
+			}
+			fmt.Printf("  • %-5s %s <-> %s | Pkts: %d | Bytes: %d | %s\n",
+				f.Protocol, initEp, respEp, f.TotalPackets, f.TotalBytes, detail)
+		}
+	}
 }
 

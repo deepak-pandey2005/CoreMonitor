@@ -6,6 +6,7 @@ import (
 
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/cbridge"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/config"
+	"github.com/deepak-pandey2005/CoreMonitor/pkg/flow"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/geoip"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/ips"
 	"github.com/deepak-pandey2005/CoreMonitor/pkg/storage"
@@ -23,6 +24,8 @@ type Stats struct {
 	BytesPerSec     float64
 	PktsPerSec      float64
 	BannedHosts     []ips.BannedHost
+	ActiveFlows     []*flow.Flow
+	FlowStats       flow.FlowStats
 }
 
 type ratePoint struct {
@@ -35,6 +38,7 @@ type Engine struct {
 	capture *cbridge.Capture
 	ids     *cbridge.IDSEngine
 	ipsMgr  *ips.Manager
+	flowMgr *flow.Manager
 
 	csvExp    *storage.CSVExporter
 	pcapExp   *storage.PCAPExporter
@@ -72,11 +76,19 @@ func NewEngine(cfg config.Config, capture *cbridge.Capture) (*Engine, error) {
 	influxExp := storage.NewInfluxExporter(cfg)
 	ipsMgr := ips.NewManager(cfg.IPS)
 
+	var flowMgr *flow.Manager
+	if cfg.Flow.Enabled {
+		idleDur := time.Duration(cfg.Flow.IdleTimeoutSeconds) * time.Second
+		activeDur := time.Duration(cfg.Flow.ActiveTimeoutSeconds) * time.Second
+		flowMgr = flow.NewManager(idleDur, activeDur)
+	}
+
 	eng := &Engine{
 		cfg:       cfg,
 		capture:   capture,
 		ids:       cbridge.NewIDSEngine(idsCfg),
 		ipsMgr:    ipsMgr,
+		flowMgr:   flowMgr,
 		csvExp:    csvExp,
 		pcapExp:   pcapExp,
 		influxExp: influxExp,
@@ -152,6 +164,11 @@ func (e *Engine) ProcessLoop() error {
 		e.influxExp.WritePacket(meta)
 		if len(alerts) > 0 {
 			e.influxExp.WriteAlerts(alerts)
+		}
+
+		// Ingest into Flow Manager
+		if e.flowMgr != nil {
+			e.flowMgr.Ingest(meta)
 		}
 
 		// Update in-memory stats
@@ -232,6 +249,13 @@ func (e *Engine) GetStats() Stats {
 		bannedCopy = e.ipsMgr.GetBannedHosts()
 	}
 
+	var activeFlows []*flow.Flow
+	var fStats flow.FlowStats
+	if e.flowMgr != nil {
+		activeFlows = e.flowMgr.GetTopFlows(25)
+		fStats = e.flowMgr.GetStats()
+	}
+
 	return Stats{
 		StartTime:       e.stats.StartTime,
 		TotalPackets:    e.stats.TotalPackets,
@@ -243,6 +267,8 @@ func (e *Engine) GetStats() Stats {
 		BytesPerSec:     e.stats.BytesPerSec,
 		PktsPerSec:      e.stats.PktsPerSec,
 		BannedHosts:     bannedCopy,
+		ActiveFlows:     activeFlows,
+		FlowStats:       fStats,
 	}
 }
 
@@ -250,9 +276,16 @@ func (e *Engine) GetIPS() *ips.Manager {
 	return e.ipsMgr
 }
 
+func (e *Engine) GetFlowManager() *flow.Manager {
+	return e.flowMgr
+}
+
 func (e *Engine) Stop() {
 	if e.running {
 		close(e.stopChan)
+	}
+	if e.flowMgr != nil {
+		e.flowMgr.Close()
 	}
 	if e.ipsMgr != nil {
 		e.ipsMgr.Cleanup()
