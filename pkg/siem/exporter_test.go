@@ -203,3 +203,4 @@ func TestSIEMSeverityFiltering(t *testing.T) {
 		t.Errorf("expected HIGH alert to be accepted when minSeverity=HIGH")
 	}
 }
+

@@ -27,3 +27,4 @@ func DefaultConfig() Config {
 		QueueSize:   1024,
 	}
 }
+

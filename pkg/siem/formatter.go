@@ -194,3 +194,4 @@ func FormatRFC5424(alert cbridge.Alert, hostname string, pid int, facility int, 
 	return fmt.Sprintf("<%d>1 %s %s CoreMonitor %d %s - %s",
 		pri, timeStr, hostname, pid, alert.AlertType, cefBody)
 }
+

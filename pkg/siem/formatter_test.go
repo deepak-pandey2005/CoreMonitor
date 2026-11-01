@@ -112,3 +112,4 @@ func TestFormatRFC5424(t *testing.T) {
 		t.Errorf("unexpected RFC 5424 syslog output: %q", syslog)
 	}
 }
+
