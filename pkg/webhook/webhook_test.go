@@ -182,3 +182,4 @@ func TestSeverityFiltering(t *testing.T) {
 		t.Errorf("expected MEDIUM alert to be dropped when MinSeverity=HIGH")
 	}
 }
+
