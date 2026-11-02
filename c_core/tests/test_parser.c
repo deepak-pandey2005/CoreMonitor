@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <net/ethernet.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <stdio.h>
@@ -289,6 +290,43 @@ void test_parse_8021q_vlan() {
            meta.vlan_id, meta.src_ip, meta.src_port, meta.dst_ip, meta.dst_port);
 }
 
+void test_parse_ipv6_tcp() {
+    uint8_t buffer[128] = {0};
+    struct ether_header *eth = (struct ether_header*)buffer;
+    eth->ether_type = htons(ETHERTYPE_IPV6);
+    memset(eth->ether_shost, 0x33, 6);
+    memset(eth->ether_dhost, 0x44, 6);
+
+    size_t l3_offset = sizeof(struct ether_header);
+    struct ip6_hdr *ip6 = (struct ip6_hdr*)(buffer + l3_offset);
+    ip6->ip6_flow = htonl(0x60000000); // IPv6 version 6
+    ip6->ip6_plen = htons(20);         // Payload length (20-byte TCP header)
+    ip6->ip6_nxt = IPPROTO_TCP;        // Next header: TCP
+    ip6->ip6_hlim = 64;
+    inet_pton(AF_INET6, "2001:db8::1", &ip6->ip6_src);
+    inet_pton(AF_INET6, "2607:f8b0:4005:805::200e", &ip6->ip6_dst);
+
+    size_t l4_offset = l3_offset + sizeof(struct ip6_hdr);
+    struct tcphdr *tcp = (struct tcphdr*)(buffer + l4_offset);
+    tcp->source = htons(51234);
+    tcp->dest = htons(443);
+    tcp->doff = 5;
+    buffer[l4_offset + 13] = 0x02; // SYN flag
+
+    cmonitor_packet_meta_t meta;
+    int res = cmonitor_parse_packet(buffer, sizeof(buffer), sizeof(buffer), 3000, 0, &meta);
+    assert(res == 0);
+    assert(strcmp(meta.protocol, "TCP") == 0);
+    assert(strcmp(meta.src_ip, "2001:db8::1") == 0);
+    assert(strcmp(meta.dst_ip, "2607:f8b0:4005:805::200e") == 0);
+    assert(meta.src_port == 51234);
+    assert(meta.dst_port == 443);
+    assert(meta.tcp_flags & CMONITOR_TCP_SYN);
+    assert(strcmp(meta.service, "HTTPS") == 0);
+    printf("✓ test_parse_ipv6_tcp passed ([%s]:%d -> [%s]:%d, proto: %s, svc: %s)\n",
+           meta.src_ip, meta.src_port, meta.dst_ip, meta.dst_port, meta.protocol, meta.service);
+}
+
 int main() {
     printf("Running C Core Parser Tests...\n");
     test_parse_tcp_syn();
@@ -297,6 +335,7 @@ int main() {
     test_parse_http_request();
     test_parse_arp_reply();
     test_parse_8021q_vlan();
+    test_parse_ipv6_tcp();
     printf("All C Parser tests passed successfully!\n");
     return 0;
 }

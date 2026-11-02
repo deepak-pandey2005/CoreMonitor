@@ -31,7 +31,6 @@ func TestSIEMExporterUDP(t *testing.T) {
 	}
 
 	exp := NewExporter(cfg)
-	defer exp.Close()
 
 	alert := cbridge.Alert{
 		Severity:  "CRITICAL",
@@ -62,6 +61,7 @@ func TestSIEMExporterUDP(t *testing.T) {
 		t.Errorf("expected act=blocked in UDP message: %q", received)
 	}
 
+	exp.Close()
 	stats := exp.GetStats()
 	if stats.EventsSent == 0 {
 		t.Errorf("expected EventsSent > 0, got %d", stats.EventsSent)

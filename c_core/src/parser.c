@@ -241,6 +241,94 @@ static void parse_http_request(const uint8_t *data, size_t len,
     }
 }
 
+#ifndef IPPROTO_ICMPV6
+#define IPPROTO_ICMPV6 58
+#endif
+
+static void parse_l4_protocol(const uint8_t *data, uint32_t caplen, size_t l4_offset,
+                              uint8_t protocol, cmonitor_packet_meta_t *out) {
+    if (protocol == IPPROTO_TCP) {
+        strncpy(out->protocol, "TCP", sizeof(out->protocol) - 1);
+        if (caplen >= l4_offset + sizeof(struct tcphdr)) {
+            const struct tcphdr *tcp = (const struct tcphdr*)(data + l4_offset);
+            out->src_port = ntohs(tcp->source);
+            out->dst_port = ntohs(tcp->dest);
+
+            uint8_t flags = data[l4_offset + 13];
+            char flag_str[32] = {0};
+            int flag_len = 0;
+
+            if (flags & 0x01) { out->tcp_flags |= CMONITOR_TCP_FIN; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "FIN,"); }
+            if (flags & 0x02) { out->tcp_flags |= CMONITOR_TCP_SYN; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "SYN,"); }
+            if (flags & 0x04) { out->tcp_flags |= CMONITOR_TCP_RST; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "RST,"); }
+            if (flags & 0x08) { out->tcp_flags |= CMONITOR_TCP_PSH; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "PSH,"); }
+            if (flags & 0x10) { out->tcp_flags |= CMONITOR_TCP_ACK; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "ACK,"); }
+            if (flags & 0x20) { out->tcp_flags |= CMONITOR_TCP_URG; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "URG,"); }
+
+            if (flag_len > 0 && flag_str[flag_len - 1] == ',') {
+                flag_str[flag_len - 1] = '\0';
+            }
+            snprintf(out->tcp_flags_str, sizeof(out->tcp_flags_str), "%s", flag_str);
+
+            size_t tcp_hdr_len = tcp->doff * 4;
+            size_t payload_offset = l4_offset + tcp_hdr_len;
+            if (caplen > payload_offset) {
+                out->payload_size = caplen - payload_offset;
+
+                // Extract TLS SNI from Client Hello
+                if (out->dst_port == 443 || out->src_port == 443 || data[payload_offset] == 0x16) {
+                    parse_tls_sni(data + payload_offset, out->payload_size,
+                                  out->tls_sni, sizeof(out->tls_sni));
+                    if (out->tls_sni[0] != '\0' && out->service[0] == '\0') {
+                        strncpy(out->service, "HTTPS", sizeof(out->service) - 1);
+                    }
+                }
+
+                // Extract HTTP Request Metadata (GET, POST, etc.)
+                parse_http_request(data + payload_offset, out->payload_size,
+                                   out->http_method, sizeof(out->http_method),
+                                   out->http_uri, sizeof(out->http_uri),
+                                   out->http_host, sizeof(out->http_host),
+                                   out->http_user_agent, sizeof(out->http_user_agent));
+                if (out->http_method[0] != '\0' && out->service[0] == '\0') {
+                    strncpy(out->service, "HTTP", sizeof(out->service) - 1);
+                }
+            }
+        }
+    } else if (protocol == IPPROTO_UDP) {
+        strncpy(out->protocol, "UDP", sizeof(out->protocol) - 1);
+        if (caplen >= l4_offset + sizeof(struct udphdr)) {
+            const struct udphdr *udp = (const struct udphdr*)(data + l4_offset);
+            out->src_port = ntohs(udp->source);
+            out->dst_port = ntohs(udp->dest);
+
+            size_t payload_offset = l4_offset + sizeof(struct udphdr);
+            if (caplen > payload_offset) {
+                out->payload_size = caplen - payload_offset;
+                if (out->src_port == 53 || out->dst_port == 53) {
+                    strncpy(out->service, "DNS", sizeof(out->service) - 1);
+                    parse_dns_query(data + payload_offset, out->payload_size,
+                                    out->dns_query, sizeof(out->dns_query), &out->dns_type);
+                }
+            }
+        }
+    } else if (protocol == IPPROTO_ICMP) {
+        strncpy(out->protocol, "ICMP", sizeof(out->protocol) - 1);
+        if (caplen >= l4_offset + sizeof(struct icmphdr)) {
+            size_t payload_offset = l4_offset + sizeof(struct icmphdr);
+            if (caplen > payload_offset) {
+                out->payload_size = caplen - payload_offset;
+            }
+        }
+    } else if (protocol == IPPROTO_ICMPV6) {
+        strncpy(out->protocol, "ICMPv6", sizeof(out->protocol) - 1);
+        size_t payload_offset = l4_offset + 8; // ICMPv6 header is 8 bytes
+        if (caplen > payload_offset) {
+            out->payload_size = caplen - payload_offset;
+        }
+    }
+}
+
 int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
                           int64_t sec, int64_t usec, cmonitor_packet_meta_t *out) {
     if (!data || !out) return -1;
@@ -293,81 +381,7 @@ int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
 
         size_t ip_hdr_len = ip->ihl * 4;
         size_t l4_offset = ip_offset + ip_hdr_len;
-
-        if (ip->protocol == IPPROTO_TCP) {
-            strncpy(out->protocol, "TCP", sizeof(out->protocol) - 1);
-            if (caplen >= l4_offset + sizeof(struct tcphdr)) {
-                const struct tcphdr *tcp = (const struct tcphdr*)(data + l4_offset);
-                out->src_port = ntohs(tcp->source);
-                out->dst_port = ntohs(tcp->dest);
-
-                uint8_t flags = data[l4_offset + 13];
-                char flag_str[32] = {0};
-                int flag_len = 0;
-
-                if (flags & 0x01) { out->tcp_flags |= CMONITOR_TCP_FIN; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "FIN,"); }
-                if (flags & 0x02) { out->tcp_flags |= CMONITOR_TCP_SYN; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "SYN,"); }
-                if (flags & 0x04) { out->tcp_flags |= CMONITOR_TCP_RST; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "RST,"); }
-                if (flags & 0x08) { out->tcp_flags |= CMONITOR_TCP_PSH; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "PSH,"); }
-                if (flags & 0x10) { out->tcp_flags |= CMONITOR_TCP_ACK; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "ACK,"); }
-                if (flags & 0x20) { out->tcp_flags |= CMONITOR_TCP_URG; flag_len += snprintf(flag_str + flag_len, sizeof(flag_str) - flag_len, "URG,"); }
-
-                if (flag_len > 0 && flag_str[flag_len - 1] == ',') {
-                    flag_str[flag_len - 1] = '\0';
-                }
-                snprintf(out->tcp_flags_str, sizeof(out->tcp_flags_str), "%s", flag_str);
-
-                size_t tcp_hdr_len = tcp->doff * 4;
-                size_t payload_offset = l4_offset + tcp_hdr_len;
-                if (caplen > payload_offset) {
-                    out->payload_size = caplen - payload_offset;
-
-                    // Extract TLS SNI from Client Hello
-                    if (out->dst_port == 443 || out->src_port == 443 || data[payload_offset] == 0x16) {
-                        parse_tls_sni(data + payload_offset, out->payload_size,
-                                      out->tls_sni, sizeof(out->tls_sni));
-                        if (out->tls_sni[0] != '\0' && out->service[0] == '\0') {
-                            strncpy(out->service, "HTTPS", sizeof(out->service) - 1);
-                        }
-                    }
-
-                    // Extract HTTP Request Metadata (GET, POST, etc.)
-                    parse_http_request(data + payload_offset, out->payload_size,
-                                       out->http_method, sizeof(out->http_method),
-                                       out->http_uri, sizeof(out->http_uri),
-                                       out->http_host, sizeof(out->http_host),
-                                       out->http_user_agent, sizeof(out->http_user_agent));
-                    if (out->http_method[0] != '\0' && out->service[0] == '\0') {
-                        strncpy(out->service, "HTTP", sizeof(out->service) - 1);
-                    }
-                }
-            }
-        } else if (ip->protocol == IPPROTO_UDP) {
-            strncpy(out->protocol, "UDP", sizeof(out->protocol) - 1);
-            if (caplen >= l4_offset + sizeof(struct udphdr)) {
-                const struct udphdr *udp = (const struct udphdr*)(data + l4_offset);
-                out->src_port = ntohs(udp->source);
-                out->dst_port = ntohs(udp->dest);
-
-                size_t payload_offset = l4_offset + sizeof(struct udphdr);
-                if (caplen > payload_offset) {
-                    out->payload_size = caplen - payload_offset;
-                    if (out->src_port == 53 || out->dst_port == 53) {
-                        strncpy(out->service, "DNS", sizeof(out->service) - 1);
-                        parse_dns_query(data + payload_offset, out->payload_size,
-                                        out->dns_query, sizeof(out->dns_query), &out->dns_type);
-                    }
-                }
-            }
-        } else if (ip->protocol == IPPROTO_ICMP) {
-            strncpy(out->protocol, "ICMP", sizeof(out->protocol) - 1);
-            if (caplen >= l4_offset + sizeof(struct icmphdr)) {
-                size_t payload_offset = l4_offset + sizeof(struct icmphdr);
-                if (caplen > payload_offset) {
-                    out->payload_size = caplen - payload_offset;
-                }
-            }
-        }
+        parse_l4_protocol(data, caplen, l4_offset, ip->protocol, out);
     } else if (ether_type == ETHERTYPE_IPV6) {
         if (caplen < ip_offset + sizeof(struct ip6_hdr)) return 0;
         const struct ip6_hdr *ip6 = (const struct ip6_hdr*)(data + ip_offset);
@@ -379,6 +393,21 @@ int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
         if (strncmp(out->dst_ip, "ff02:", 5) == 0) {
             out->is_broadcast = 1;
         }
+
+        uint8_t next_hdr = ip6->ip6_nxt;
+        size_t l4_offset = ip_offset + sizeof(struct ip6_hdr);
+
+        while (l4_offset < caplen &&
+               (next_hdr == IPPROTO_HOPOPTS || next_hdr == IPPROTO_ROUTING ||
+                next_hdr == IPPROTO_FRAGMENT || next_hdr == IPPROTO_DSTOPTS)) {
+            if (l4_offset + 2 > caplen) break;
+            uint8_t hdr_ext_len = data[l4_offset + 1];
+            size_t ext_len = (next_hdr == IPPROTO_FRAGMENT) ? 8 : (size_t)(hdr_ext_len + 1) * 8;
+            next_hdr = data[l4_offset];
+            l4_offset += ext_len;
+        }
+
+        parse_l4_protocol(data, caplen, l4_offset, next_hdr, out);
     } else if (ether_type == ETHERTYPE_ARP) {
         strncpy(out->protocol, "ARP", sizeof(out->protocol) - 1);
         out->is_broadcast = 1;
