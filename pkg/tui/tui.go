@@ -309,9 +309,14 @@ func (m Model) View() string {
 		filterBadge = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFFF")).Render(fmt.Sprintf("BPF: [%s]", m.activeFilter))
 	}
 
+	rightWidth := m.width - 60
+	if rightWidth < 20 {
+		rightWidth = 20
+	}
+
 	navRow := lipgloss.JoinHorizontal(lipgloss.Top,
 		lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...),
-		lipgloss.NewStyle().Width(m.width-60).Align(lipgloss.Right).Render(
+		lipgloss.NewStyle().Width(rightWidth).Align(lipgloss.Right).Render(
 			fmt.Sprintf("%s  |  Iface: %s  |  Uptime: %s  |  %s", filterBadge, m.iface, uptime, status),
 		),
 	)
@@ -388,7 +393,6 @@ func (m Model) renderOverview() string {
 		stats.PktsPerSec,
 		siemInfo,
 	)
-	flowBox := boxStyle.Width(35).Render(headerTitleStyle.Render("FLOW METRICS\n") + flowContent)
 
 	// Protocols Box
 	type pPair struct {
@@ -412,7 +416,6 @@ func (m Model) renderOverview() string {
 	if len(protoLines) == 0 {
 		protoLines = append(protoLines, "Listening for traffic...")
 	}
-	protoBox := boxStyle.Width(30).Render(headerTitleStyle.Render("PROTOCOLS\n") + strings.Join(protoLines, "\n"))
 
 	// Top Talkers Box
 	type tPair struct {
@@ -437,9 +440,31 @@ func (m Model) renderOverview() string {
 	if len(talkerLines) == 0 {
 		talkerLines = append(talkerLines, "Waiting for traffic...")
 	}
-	talkerBox := boxStyle.Width(32).Render(headerTitleStyle.Render("TOP TALKERS\n") + strings.Join(talkerLines, "\n"))
 
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top, flowBox, " ", protoBox, " ", talkerBox)
+	// Responsive box sizing and layout
+	availWidth := m.width - 4
+	if availWidth < 30 {
+		availWidth = 80
+	}
+	alertsWidth := availWidth
+	if alertsWidth > 102 {
+		alertsWidth = 102
+	}
+
+	var flowBox, protoBox, talkerBox string
+	var topRow string
+
+	if m.width > 0 && m.width < 90 {
+		flowBox = boxStyle.Width(alertsWidth).Render(headerTitleStyle.Render("FLOW METRICS\n") + flowContent)
+		protoBox = boxStyle.Width(alertsWidth).Render(headerTitleStyle.Render("PROTOCOLS\n") + strings.Join(protoLines, "\n"))
+		talkerBox = boxStyle.Width(alertsWidth).Render(headerTitleStyle.Render("TOP TALKERS\n") + strings.Join(talkerLines, "\n"))
+		topRow = lipgloss.JoinVertical(lipgloss.Left, flowBox, protoBox, talkerBox)
+	} else {
+		flowBox = boxStyle.Width(35).Render(headerTitleStyle.Render("FLOW METRICS\n") + flowContent)
+		protoBox = boxStyle.Width(30).Render(headerTitleStyle.Render("PROTOCOLS\n") + strings.Join(protoLines, "\n"))
+		talkerBox = boxStyle.Width(32).Render(headerTitleStyle.Render("TOP TALKERS\n") + strings.Join(talkerLines, "\n"))
+		topRow = lipgloss.JoinHorizontal(lipgloss.Top, flowBox, " ", protoBox, " ", talkerBox)
+	}
 
 	// Alerts Ticker Row
 	var alertLines []string
@@ -463,7 +488,7 @@ func (m Model) renderOverview() string {
 				tStr, badge, a.AlertType, a.SrcIP, a.DstIP, a.Message))
 		}
 	}
-	alertsBox := boxStyle.Width(100).Render(lipgloss.NewStyle().Bold(true).Foreground(critColor).Render("RECENT SECURITY ALERTS\n") + strings.Join(alertLines, "\n"))
+	alertsBox := boxStyle.Width(alertsWidth).Render(lipgloss.NewStyle().Bold(true).Foreground(critColor).Render("RECENT SECURITY ALERTS\n") + strings.Join(alertLines, "\n"))
 
 	return lipgloss.JoinVertical(lipgloss.Left, topRow, "\n", alertsBox)
 }
