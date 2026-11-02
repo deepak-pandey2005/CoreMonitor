@@ -127,3 +127,29 @@ const (
 	CMonitorTCPACK = 0x10
 	CMonitorTCPURG = 0x20
 )
+
+func BenchmarkIDSEngineAnalyze(b *testing.B) {
+	ids := NewIDSEngine(DefaultIDSConfig())
+	defer ids.Close()
+
+	meta := &PacketMeta{
+		Timestamp:   time.Now().UTC(),
+		SrcIP:       "192.168.1.50",
+		DstIP:       "10.0.0.1",
+		Protocol:    "TCP",
+		Service:     "HTTP",
+		SrcPort:     54321,
+		DstPort:     80,
+		PacketSize:  128,
+		PayloadSize: 64,
+		SrcMAC:      "00:11:22:33:44:55",
+		DstMAC:      "66:77:88:99:aa:bb",
+		DNSQuery:    "example.com",
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ids.Analyze(meta)
+	}
+}

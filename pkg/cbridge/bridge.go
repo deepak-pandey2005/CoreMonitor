@@ -320,7 +320,10 @@ func (ids *IDSEngine) Close() {
 }
 
 func copyString(dest *C.char, src string, maxLen int) {
-	cStr := C.CString(src)
-	defer C.free(unsafe.Pointer(cStr))
-	C.strncpy(dest, cStr, C.size_t(maxLen-1))
+	if maxLen <= 0 || dest == nil {
+		return
+	}
+	slice := unsafe.Slice((*byte)(unsafe.Pointer(dest)), maxLen)
+	n := copy(slice[:maxLen-1], src)
+	slice[n] = 0
 }
