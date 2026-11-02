@@ -90,3 +90,45 @@ func TestCSVAndPCAPExporters(t *testing.T) {
 		t.Errorf("traffic PCAP file was not created in %s", tempDir)
 	}
 }
+
+func TestStorageBufferedThroughput(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "coremonitor_bench")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	cfg := *config.DefaultConfig()
+	cfg.Storage.CSVDir = tempDir
+	cfg.Storage.PCAPDir = tempDir
+
+	csvExp, err := NewCSVExporter(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer csvExp.Close()
+
+	pcapExp, err := NewPCAPExporter(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pcapExp.Close()
+
+	meta := &cbridge.PacketMeta{
+		Timestamp:  time.Now().UTC(),
+		SrcIP:      "10.0.0.1",
+		DstIP:      "10.0.0.2",
+		SrcPort:    80,
+		DstPort:    1234,
+		Protocol:   "TCP",
+		PacketSize: 128,
+	}
+	rawPkt := make([]byte, 128)
+
+	for i := 0; i < 250; i++ {
+		csvExp.WritePacket(meta)
+		pcapExp.WriteRawPacket(meta.Timestamp, rawPkt, 128)
+	}
+	csvExp.Close()
+	pcapExp.Close()
+}

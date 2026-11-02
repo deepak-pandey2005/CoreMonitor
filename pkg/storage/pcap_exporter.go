@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bufio"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ type PCAPExporter struct {
 	cfg          config.Config
 	mu           sync.Mutex
 	file         *os.File
+	bufWriter    *bufio.Writer
 	lastRotation time.Time
 }
 
@@ -41,6 +43,10 @@ func (exp *PCAPExporter) rotateFiles() error {
 	}
 
 	if exp.file != nil {
+		if exp.bufWriter != nil {
+			_ = exp.bufWriter.Flush()
+			exp.bufWriter = nil
+		}
 		_ = exp.file.Close()
 		exp.file = nil
 	}
@@ -63,12 +69,15 @@ func (exp *PCAPExporter) rotateFiles() error {
 	binary.LittleEndian.PutUint32(hdr[16:20], 65535)    // Max snapshot length
 	binary.LittleEndian.PutUint32(hdr[20:24], 1)        // Data link type: 1 = Ethernet
 
-	if _, err := f.Write(hdr); err != nil {
+	exp.file = f
+	exp.bufWriter = bufio.NewWriterSize(f, 65536)
+	if _, err := exp.bufWriter.Write(hdr); err != nil {
 		_ = f.Close()
+		exp.file = nil
+		exp.bufWriter = nil
 		return err
 	}
 
-	exp.file = f
 	exp.lastRotation = now
 	return nil
 }
@@ -81,7 +90,7 @@ func (exp *PCAPExporter) WriteRawPacket(ts time.Time, rawData []byte, origLen ui
 	defer exp.mu.Unlock()
 
 	_ = exp.rotateFiles()
-	if exp.file == nil {
+	if exp.bufWriter == nil {
 		return
 	}
 
@@ -92,13 +101,17 @@ func (exp *PCAPExporter) WriteRawPacket(ts time.Time, rawData []byte, origLen ui
 	binary.LittleEndian.PutUint32(recHdr[8:12], uint32(len(rawData)))
 	binary.LittleEndian.PutUint32(recHdr[12:16], origLen)
 
-	_, _ = exp.file.Write(recHdr)
-	_, _ = exp.file.Write(rawData)
+	_, _ = exp.bufWriter.Write(recHdr)
+	_, _ = exp.bufWriter.Write(rawData)
 }
 
 func (exp *PCAPExporter) Close() {
 	exp.mu.Lock()
 	defer exp.mu.Unlock()
+	if exp.bufWriter != nil {
+		_ = exp.bufWriter.Flush()
+		exp.bufWriter = nil
+	}
 	if exp.file != nil {
 		_ = exp.file.Close()
 		exp.file = nil

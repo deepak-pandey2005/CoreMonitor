@@ -21,6 +21,7 @@ type CSVExporter struct {
 	alertFile    *os.File
 	alertWriter  *csv.Writer
 	lastRotation time.Time
+	pktCount     int
 }
 
 func NewCSVExporter(cfg config.Config) (*CSVExporter, error) {
@@ -123,7 +124,10 @@ func (exp *CSVExporter) WritePacket(meta *cbridge.PacketMeta) {
 		meta.SrcMAC,
 		meta.DstMAC,
 	})
-	exp.pktWriter.Flush()
+	exp.pktCount++
+	if exp.pktCount%100 == 0 {
+		exp.pktWriter.Flush()
+	}
 }
 
 func (exp *CSVExporter) WriteAlerts(alerts []cbridge.Alert) {
@@ -174,6 +178,7 @@ func (exp *CSVExporter) closeFiles() {
 		_ = exp.alertFile.Close()
 		exp.alertFile = nil
 	}
+	exp.pktCount = 0
 }
 
 func (exp *CSVExporter) Close() {
