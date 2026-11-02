@@ -268,6 +268,15 @@ int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
     uint16_t ether_type = ntohs(eth->ether_type);
     size_t ip_offset = sizeof(struct ether_header);
 
+    /* Unpack 802.1Q / 802.1ad VLAN tags (including stacked QinQ) */
+    while (ether_type == 0x8100 || ether_type == 0x88a8 || ether_type == 0x9100) {
+        if (caplen < ip_offset + 4) return 0;
+        uint16_t tci = (data[ip_offset] << 8) | data[ip_offset + 1];
+        out->vlan_id = tci & 0x0FFF;
+        ether_type = (data[ip_offset + 2] << 8) | data[ip_offset + 3];
+        ip_offset += 4;
+    }
+
     if (ether_type == ETHERTYPE_IP) {
         if (caplen < ip_offset + sizeof(struct iphdr)) return 0;
         const struct iphdr *ip = (const struct iphdr*)(data + ip_offset);

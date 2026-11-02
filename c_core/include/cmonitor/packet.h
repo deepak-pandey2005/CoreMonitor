@@ -34,6 +34,7 @@ typedef struct {
     char http_uri[256];       /* HTTP Request URI */
     char http_user_agent[128];/* HTTP User-Agent header */
     uint16_t arp_opcode;      /* 1: Request, 2: Reply, 0: not ARP */
+    uint16_t vlan_id;         /* 802.1Q VLAN ID (0 if untagged) */
     uint8_t is_broadcast;
 } cmonitor_packet_meta_t;
 

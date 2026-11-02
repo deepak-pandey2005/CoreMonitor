@@ -47,6 +47,7 @@ type PacketMeta struct {
 	HTTPURI       string
 	HTTPUserAgent string
 	ARPOpcode     uint16
+	VLANID        uint16
 	IsBroadcast   bool
 
 	// GeoIP Enrichment
@@ -171,6 +172,7 @@ func (c *Capture) Next() (*PacketMeta, []byte, error) {
 		HTTPURI:       C.GoString(&cMeta.http_uri[0]),
 		HTTPUserAgent: C.GoString(&cMeta.http_user_agent[0]),
 		ARPOpcode:     uint16(cMeta.arp_opcode),
+		VLANID:        uint16(cMeta.vlan_id),
 		IsBroadcast:   cMeta.is_broadcast != 0,
 	}
 

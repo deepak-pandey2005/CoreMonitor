@@ -250,6 +250,45 @@ static void test_parse_arp_reply() {
            meta.src_ip, meta.src_mac, meta.dst_ip);
 }
 
+void test_parse_8021q_vlan() {
+    uint8_t buffer[128] = {0};
+    struct ether_header *eth = (struct ether_header*)buffer;
+    eth->ether_type = htons(0x8100); // 802.1Q VLAN Tag
+    memset(eth->ether_shost, 0x11, 6);
+    memset(eth->ether_dhost, 0x22, 6);
+
+    // VLAN Tag (4 bytes): TCI (2 bytes: PRI=0, CFI=0, VID=100) + inner EtherType (0x0800 for IPv4)
+    uint8_t *vlan = buffer + sizeof(struct ether_header);
+    vlan[0] = 0x00;
+    vlan[1] = 100; // VLAN ID: 100
+    vlan[2] = 0x08;
+    vlan[3] = 0x00; // Inner EtherType: IPv4
+
+    size_t l3_offset = sizeof(struct ether_header) + 4;
+    struct iphdr *ip = (struct iphdr*)(buffer + l3_offset);
+    ip->ihl = 5;
+    ip->version = 4;
+    ip->protocol = IPPROTO_TCP;
+    inet_pton(AF_INET, "192.168.100.5", &ip->saddr);
+    inet_pton(AF_INET, "10.10.10.1", &ip->daddr);
+
+    struct tcphdr *tcp = (struct tcphdr*)(buffer + l3_offset + 20);
+    tcp->source = htons(49152);
+    tcp->dest = htons(443);
+    tcp->doff = 5;
+
+    cmonitor_packet_meta_t meta;
+    int res = cmonitor_parse_packet(buffer, sizeof(buffer), sizeof(buffer), 2000, 0, &meta);
+    assert(res == 0);
+    assert(meta.vlan_id == 100);
+    assert(strcmp(meta.protocol, "TCP") == 0);
+    assert(strcmp(meta.src_ip, "192.168.100.5") == 0);
+    assert(strcmp(meta.dst_ip, "10.10.10.1") == 0);
+    assert(meta.dst_port == 443);
+    printf("✓ test_parse_8021q_vlan passed (VLAN ID: %d, %s:%d -> %s:%d)\n",
+           meta.vlan_id, meta.src_ip, meta.src_port, meta.dst_ip, meta.dst_port);
+}
+
 int main() {
     printf("Running C Core Parser Tests...\n");
     test_parse_tcp_syn();
@@ -257,6 +296,7 @@ int main() {
     test_parse_tls_sni();
     test_parse_http_request();
     test_parse_arp_reply();
+    test_parse_8021q_vlan();
     printf("All C Parser tests passed successfully!\n");
     return 0;
 }
