@@ -162,3 +162,57 @@ func TestTopFlowsSortingAndSummary(t *testing.T) {
 	}
 }
 
+func TestFlowReplayTimelineAndCapacity(t *testing.T) {
+	// Historical PCAP timestamp from year 2020
+	pcapBase := time.Date(2020, 1, 15, 10, 0, 0, 0, time.UTC)
+	mgr := NewManagerWithCapacity(30*time.Second, 120*time.Second, 5)
+	defer mgr.Close()
+
+	// Ingest packet from 2020
+	p1 := &cbridge.PacketMeta{
+		Timestamp:  pcapBase,
+		Protocol:   "TCP",
+		SrcIP:      "192.168.1.100",
+		DstIP:      "93.184.216.34",
+		SrcPort:    50000,
+		DstPort:    80,
+		PacketSize: 200,
+	}
+	f1 := mgr.Ingest(p1)
+	if f1 == nil {
+		t.Fatal("expected flow to be created")
+	}
+
+	// Janitor / Sweep with wall clock time should NOT prematurely evict historical flow
+	// because last seen packet was from 2020
+	mgr.Sweep(pcapBase.Add(5 * time.Second))
+	if len(mgr.GetActiveFlows()) != 1 {
+		t.Errorf("expected 1 active flow after 5 seconds in replay time, got %d", len(mgr.GetActiveFlows()))
+	}
+
+	// Advance replay time past idle timeout (35s > 30s)
+	mgr.Sweep(pcapBase.Add(35 * time.Second))
+	if len(mgr.GetActiveFlows()) != 0 {
+		t.Errorf("expected 0 active flows after 35s in replay time, got %d", len(mgr.GetActiveFlows()))
+	}
+
+	// Test max capacity ceiling (capacity = 5)
+	for i := 0; i < 15; i++ {
+		p := &cbridge.PacketMeta{
+			Timestamp:  pcapBase.Add(time.Duration(i) * time.Second),
+			Protocol:   "UDP",
+			SrcIP:      "10.0.0.1",
+			DstIP:      "10.0.0.2",
+			SrcPort:    uint16(1000 + i),
+			DstPort:    53,
+			PacketSize: 64,
+		}
+		mgr.Ingest(p)
+	}
+
+	active := mgr.GetActiveFlows()
+	if len(active) > 5 {
+		t.Errorf("expected active flows <= 5 (capacity limit), got %d", len(active))
+	}
+}
+

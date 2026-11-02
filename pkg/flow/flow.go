@@ -95,6 +95,8 @@ type FlowStats struct {
 	TotalVolumeBytes  uint64
 }
 
+const DefaultMaxActiveFlows = 50000
+
 // Manager orchestrates concurrent flow ingestion, aggregation, and expiration.
 type Manager struct {
 	mu            sync.RWMutex
@@ -105,16 +107,26 @@ type Manager struct {
 
 	idleTimeout   time.Duration
 	activeTimeout time.Duration
+	maxFlows      int
+	lastPktTime   time.Time
 	stopChan      chan struct{}
 }
 
 // NewManager creates a flow manager and runs a background janitor.
 func NewManager(idleTimeout, activeTimeout time.Duration) *Manager {
+	return NewManagerWithCapacity(idleTimeout, activeTimeout, DefaultMaxActiveFlows)
+}
+
+// NewManagerWithCapacity creates a flow manager with a configured maximum active flow capacity.
+func NewManagerWithCapacity(idleTimeout, activeTimeout time.Duration, maxFlows int) *Manager {
 	if idleTimeout <= 0 {
 		idleTimeout = 30 * time.Second
 	}
 	if activeTimeout <= 0 {
 		activeTimeout = 120 * time.Second
+	}
+	if maxFlows <= 0 {
+		maxFlows = DefaultMaxActiveFlows
 	}
 
 	mgr := &Manager{
@@ -122,6 +134,7 @@ func NewManager(idleTimeout, activeTimeout time.Duration) *Manager {
 		closedHistory: make([]*Flow, 0, 100),
 		idleTimeout:   idleTimeout,
 		activeTimeout: activeTimeout,
+		maxFlows:      maxFlows,
 		stopChan:      make(chan struct{}),
 	}
 
@@ -140,10 +153,21 @@ func (m *Manager) Ingest(meta *cbridge.PacketMeta) *Flow {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if !meta.Timestamp.IsZero() && meta.Timestamp.After(m.lastPktTime) {
+		m.lastPktTime = meta.Timestamp
+	}
+
 	f, exists := m.flows[key]
 	pktBytes := uint64(meta.PacketSize)
 
 	if !exists {
+		if len(m.flows) >= m.maxFlows {
+			m.evictStaleFlowsLocked(meta.Timestamp)
+			if len(m.flows) >= m.maxFlows {
+				m.evictOldestLocked()
+			}
+		}
+
 		f = &Flow{
 			Key:           key,
 			InitiatorIP:   meta.SrcIP,
@@ -250,19 +274,40 @@ func (m *Manager) janitorLoop() {
 		case <-m.stopChan:
 			return
 		case now := <-ticker.C:
-			m.sweep(now)
+			refTime := now
+			m.mu.RLock()
+			lastPkt := m.lastPktTime
+			m.mu.RUnlock()
+
+			// If last packet is historical (e.g. PCAP replay where timestamp is in the past),
+			// avoid using wall clock time which would instantly evict all replay flows.
+			if !lastPkt.IsZero() && (now.Sub(lastPkt) > time.Hour || lastPkt.After(now)) {
+				refTime = lastPkt
+			}
+			m.Sweep(refTime)
 		}
 	}
 }
 
-// Sweep checks for idle flows and moves them to history.
-func (m *Manager) sweep(now time.Time) {
+// Sweep checks for idle flows relative to a reference time and moves them to history.
+func (m *Manager) Sweep(refTime time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.evictStaleFlowsLocked(refTime)
+}
+
+func (m *Manager) sweep(refTime time.Time) {
+	m.Sweep(refTime)
+}
+
+func (m *Manager) evictStaleFlowsLocked(refTime time.Time) {
+	if refTime.IsZero() {
+		refTime = time.Now()
+	}
 
 	for key, f := range m.flows {
-		isIdle := now.Sub(f.LastSeen) > m.idleTimeout
-		isActiveLimit := now.Sub(f.StartTime) > m.activeTimeout
+		isIdle := refTime.Sub(f.LastSeen) > m.idleTimeout
+		isActiveLimit := refTime.Sub(f.StartTime) > m.activeTimeout
 		isClosed := f.State == "CLOSED"
 
 		if isIdle || isActiveLimit || isClosed {
@@ -275,6 +320,30 @@ func (m *Manager) sweep(now time.Time) {
 			m.closedHistory = append(m.closedHistory, f)
 			delete(m.flows, key)
 		}
+	}
+}
+
+func (m *Manager) evictOldestLocked() {
+	var oldestKey FlowKey
+	var oldestTime time.Time
+	first := true
+
+	for key, f := range m.flows {
+		if first || f.LastSeen.Before(oldestTime) {
+			oldestTime = f.LastSeen
+			oldestKey = key
+			first = false
+		}
+	}
+
+	if !first {
+		f := m.flows[oldestKey]
+		f.State = "TIMED_OUT"
+		if len(m.closedHistory) >= 100 {
+			m.closedHistory = m.closedHistory[1:]
+		}
+		m.closedHistory = append(m.closedHistory, f)
+		delete(m.flows, oldestKey)
 	}
 }
 
