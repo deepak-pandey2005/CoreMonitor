@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 	"unsafe"
 )
@@ -77,6 +78,7 @@ type Alert struct {
 }
 
 type Capture struct {
+	mu     sync.RWMutex
 	handle *C.cmonitor_capture_t
 }
 
@@ -124,7 +126,10 @@ func OpenOffline(filepath, bpfFilter string) (*Capture, error) {
 }
 
 func (c *Capture) Next() (*PacketMeta, []byte, error) {
-	if c.handle == nil {
+	c.mu.RLock()
+	h := c.handle
+	if h == nil {
+		c.mu.RUnlock()
 		return nil, nil, errors.New("capture handle closed")
 	}
 
@@ -132,7 +137,8 @@ func (c *Capture) Next() (*PacketMeta, []byte, error) {
 	var rawData *C.uint8_t
 	var rawLen C.uint32_t
 
-	res := C.cmonitor_capture_next(c.handle, &cMeta, &rawData, &rawLen)
+	res := C.cmonitor_capture_next(h, &cMeta, &rawData, &rawLen)
+	c.mu.RUnlock()
 	if res == 0 {
 		return nil, nil, ErrTimeout
 	}
@@ -177,6 +183,8 @@ func (c *Capture) Next() (*PacketMeta, []byte, error) {
 }
 
 func (c *Capture) SetBPFFilter(filter string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.handle == nil {
 		return errors.New("capture handle closed")
 	}
@@ -194,6 +202,8 @@ func (c *Capture) SetBPFFilter(filter string) error {
 }
 
 func (c *Capture) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.handle != nil {
 		C.cmonitor_capture_close(c.handle)
 		c.handle = nil

@@ -83,7 +83,7 @@ int cmonitor_capture_next(cmonitor_capture_t *cap, cmonitor_packet_meta_t *out_m
     int res = pcap_next_ex(cap->handle, &header, &pkt_data);
     if (res == 1) {
         if (out_raw_data) *out_raw_data = pkt_data;
-        if (out_raw_len) *out_raw_len = header->len;
+        if (out_raw_len) *out_raw_len = header->caplen;
 
         if (out_meta) {
             cmonitor_parse_packet(pkt_data, header->caplen, header->len,

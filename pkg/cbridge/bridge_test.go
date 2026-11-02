@@ -92,6 +92,33 @@ func TestCaptureSetBPFFilter(t *testing.T) {
 	}
 }
 
+func TestCaptureRawLengthSafety(t *testing.T) {
+	cap, err := OpenOffline("../../tests/fixtures/attack_sample.pcap", "")
+	if err != nil {
+		t.Fatalf("failed to open pcap: %v", err)
+	}
+	defer cap.Close()
+
+	packetCount := 0
+	for {
+		meta, raw, err := cap.Next()
+		if err == ErrEOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("capture error: %v", err)
+		}
+		packetCount++
+		// The captured raw byte slice length must never exceed the reported packet wire size
+		if uint32(len(raw)) > meta.PacketSize {
+			t.Errorf("raw byte length %d exceeded wire packet size %d", len(raw), meta.PacketSize)
+		}
+	}
+	if packetCount == 0 {
+		t.Errorf("expected packets from fixture, got 0")
+	}
+}
+
 const (
 	CMonitorTCPFIN = 0x01
 	CMonitorTCPSYN = 0x02
