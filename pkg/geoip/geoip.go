@@ -14,10 +14,13 @@ type Location struct {
 	IsPrivate   bool
 }
 
+const DefaultMaxCacheEntries = 10000
+
 type Resolver struct {
-	mu    sync.RWMutex
-	cache map[string]Location
-	cidrs []cidrEntry
+	mu         sync.RWMutex
+	cache      map[string]Location
+	cidrs      []cidrEntry
+	maxEntries int
 }
 
 type cidrEntry struct {
@@ -55,9 +58,17 @@ func Lookup(ipStr string) Location {
 }
 
 func NewResolver() *Resolver {
+	return NewResolverWithCapacity(DefaultMaxCacheEntries)
+}
+
+func NewResolverWithCapacity(maxEntries int) *Resolver {
+	if maxEntries <= 0 {
+		maxEntries = DefaultMaxCacheEntries
+	}
 	r := &Resolver{
-		cache: make(map[string]Location),
-		cidrs: make([]cidrEntry, 0, 64),
+		cache:      make(map[string]Location),
+		cidrs:      make([]cidrEntry, 0, 64),
+		maxEntries: maxEntries,
 	}
 	r.initBuiltinCIDRs()
 	return r
@@ -174,8 +185,27 @@ func (r *Resolver) Lookup(ipStr string) Location {
 	}
 
 	r.mu.Lock()
+	if len(r.cache) >= r.maxEntries {
+		evictCount := r.maxEntries / 4
+		if evictCount == 0 {
+			evictCount = 1
+		}
+		for k := range r.cache {
+			delete(r.cache, k)
+			evictCount--
+			if evictCount <= 0 {
+				break
+			}
+		}
+	}
 	r.cache[ipStr] = loc
 	r.mu.Unlock()
 
 	return loc
+}
+
+func (r *Resolver) CacheLen() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.cache)
 }

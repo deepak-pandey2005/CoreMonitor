@@ -1,6 +1,7 @@
 package geoip
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -48,5 +49,19 @@ func TestLookup(t *testing.T) {
 	locTor := Lookup("185.220.101.5")
 	if locTor.CountryCode != "DE" || locTor.Flag != "🇩🇪" {
 		t.Errorf("expected DE for 185.220.101.5, got %+v", locTor)
+	}
+}
+
+func TestResolverBoundedCache(t *testing.T) {
+	capacity := 100
+	res := NewResolverWithCapacity(capacity)
+
+	for i := 0; i < 300; i++ {
+		ip := fmt.Sprintf("198.51.100.%d", i)
+		_ = res.Lookup(ip)
+	}
+
+	if res.CacheLen() > capacity {
+		t.Errorf("expected cache len <= %d, got %d", capacity, res.CacheLen())
 	}
 }
