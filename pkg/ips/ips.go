@@ -43,25 +43,31 @@ type BannedHost struct {
 }
 
 type Manager struct {
-	cfg        Config
-	mu         sync.RWMutex
-	banned     map[string]*BannedHost
-	whitelist  map[string]bool
-	stopChan   chan struct{}
-	actionChan chan string
+	cfg            Config
+	mu             sync.RWMutex
+	banned         map[string]*BannedHost
+	whitelistIPs   map[string]bool
+	whitelistCIDRs []*net.IPNet
+	stopChan       chan struct{}
+	actionChan     chan string
 }
 
 func NewManager(cfg Config) *Manager {
 	m := &Manager{
-		cfg:        cfg,
-		banned:     make(map[string]*BannedHost),
-		whitelist:  make(map[string]bool),
-		stopChan:   make(chan struct{}),
-		actionChan: make(chan string, 100),
+		cfg:            cfg,
+		banned:         make(map[string]*BannedHost),
+		whitelistIPs:   make(map[string]bool),
+		whitelistCIDRs: make([]*net.IPNet, 0),
+		stopChan:       make(chan struct{}),
+		actionChan:     make(chan string, 100),
 	}
 
-	for _, ip := range cfg.Whitelist {
-		m.whitelist[ip] = true
+	for _, entry := range cfg.Whitelist {
+		if _, ipNet, err := net.ParseCIDR(entry); err == nil {
+			m.whitelistCIDRs = append(m.whitelistCIDRs, ipNet)
+		} else {
+			m.whitelistIPs[entry] = true
+		}
 	}
 
 	if cfg.Enabled {
@@ -72,15 +78,20 @@ func NewManager(cfg Config) *Manager {
 }
 
 func (m *Manager) isWhitelisted(ipStr string) bool {
-	if m.whitelist[ipStr] {
+	if m.whitelistIPs[ipStr] {
 		return true
 	}
 	parsed := net.ParseIP(ipStr)
 	if parsed == nil {
-		return true
+		return false
 	}
 	if parsed.IsLoopback() {
 		return true
+	}
+	for _, ipNet := range m.whitelistCIDRs {
+		if ipNet.Contains(parsed) {
+			return true
+		}
 	}
 	return false
 }
@@ -138,8 +149,8 @@ func (m *Manager) Ban(ip, reason, severity string) bool {
 	}
 
 	if m.cfg.Mode == "block" {
-		m.execIptables("-I", "INPUT", "-s", ip, "-j", "DROP")
-		m.execIptables("-I", "FORWARD", "-s", ip, "-j", "DROP")
+		m.execFirewall(ip, "-I", "INPUT", "-s", ip, "-j", "DROP")
+		m.execFirewall(ip, "-I", "FORWARD", "-s", ip, "-j", "DROP")
 	}
 
 	select {
@@ -162,8 +173,8 @@ func (m *Manager) Unban(ip string) bool {
 	host.Active = false
 
 	if m.cfg.Mode == "block" {
-		m.execIptables("-D", "INPUT", "-s", ip, "-j", "DROP")
-		m.execIptables("-D", "FORWARD", "-s", ip, "-j", "DROP")
+		m.execFirewall(ip, "-D", "INPUT", "-s", ip, "-j", "DROP")
+		m.execFirewall(ip, "-D", "FORWARD", "-s", ip, "-j", "DROP")
 	}
 
 	select {
@@ -226,8 +237,12 @@ func (m *Manager) expirationWorker() {
 	}
 }
 
-func (m *Manager) execIptables(args ...string) {
-	cmd := exec.Command("iptables", args...)
+func (m *Manager) execFirewall(ip string, args ...string) {
+	bin := "iptables"
+	if parsed := net.ParseIP(ip); parsed != nil && parsed.To4() == nil {
+		bin = "ip6tables"
+	}
+	cmd := exec.Command(bin, args...)
 	_ = cmd.Run()
 }
 
@@ -242,8 +257,8 @@ func (m *Manager) Cleanup() {
 	if m.cfg.Mode == "block" {
 		for ip, h := range m.banned {
 			if h.Active {
-				m.execIptables("-D", "INPUT", "-s", ip, "-j", "DROP")
-				m.execIptables("-D", "FORWARD", "-s", ip, "-j", "DROP")
+				m.execFirewall(ip, "-D", "INPUT", "-s", ip, "-j", "DROP")
+				m.execFirewall(ip, "-D", "FORWARD", "-s", ip, "-j", "DROP")
 				h.Active = false
 			}
 		}

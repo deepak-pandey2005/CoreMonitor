@@ -78,3 +78,59 @@ func TestIPSManager(t *testing.T) {
 		t.Errorf("192.168.1.200 should have been unbanned after expiration")
 	}
 }
+
+func TestIPSCIDRWhitelistAndIPv6(t *testing.T) {
+	cfg := Config{
+		Enabled:            true,
+		Mode:               "simulate",
+		BanDurationSeconds: 10,
+		MinSeverity:        "LOW",
+		Whitelist: []string{
+			"192.168.10.0/24",
+			"2001:db8::/32",
+			"10.0.0.5",
+		},
+	}
+
+	mgr := NewManager(cfg)
+	defer mgr.Cleanup()
+
+	// 1. IP in CIDR whitelist
+	if mgr.isWhitelisted("192.168.10.45") != true {
+		t.Errorf("expected 192.168.10.45 to be whitelisted by CIDR")
+	}
+	// IP outside CIDR whitelist
+	if mgr.isWhitelisted("192.168.11.45") != false {
+		t.Errorf("expected 192.168.11.45 to NOT be whitelisted")
+	}
+
+	// 2. IPv6 in CIDR whitelist
+	if mgr.isWhitelisted("2001:db8:1234::1") != true {
+		t.Errorf("expected 2001:db8:1234::1 to be whitelisted by IPv6 CIDR")
+	}
+	// IPv6 outside CIDR whitelist
+	if mgr.isWhitelisted("2001:db9::1") != false {
+		t.Errorf("expected 2001:db9::1 to NOT be whitelisted")
+	}
+
+	// 3. IPv6 ban test
+	ipv6Target := "2607:f8b0:4005:805::200e"
+	alertIPv6 := cbridge.Alert{
+		Severity:  "HIGH",
+		AlertType: "SYN_FLOOD",
+		SrcIP:     ipv6Target,
+	}
+	if !mgr.HandleAlert(alertIPv6) {
+		t.Errorf("expected IPv6 alert to trigger ban")
+	}
+	if !mgr.IsBanned(ipv6Target) {
+		t.Errorf("expected %s to be banned", ipv6Target)
+	}
+	if !mgr.Unban(ipv6Target) {
+		t.Errorf("expected %s unban to succeed", ipv6Target)
+	}
+	if mgr.IsBanned(ipv6Target) {
+		t.Errorf("expected %s to no longer be banned", ipv6Target)
+	}
+}
+
