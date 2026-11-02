@@ -151,13 +151,21 @@ static host_tracker_t* get_host_tracker(cmonitor_ids_t *ids, const char *ip) {
             return &ids->hosts[idx];
         }
     }
-    return &ids->hosts[h]; /* Fallback overwriting */
+    /* Fallback slot eviction when host table is completely saturated:
+     * re-initialize state to prevent attack history bleeding from displaced host. */
+    memset(&ids->hosts[h], 0, sizeof(host_tracker_t));
+    ids->hosts[h].in_use = 1;
+    snprintf(ids->hosts[h].ip, sizeof(ids->hosts[h].ip), "%s", ip);
+    return &ids->hosts[h];
 }
 
 static int should_suppress(cmonitor_ids_t *ids, const char *alert_type, const char *key, int64_t now_sec) {
     char full_key[96];
     snprintf(full_key, sizeof(full_key), "%s:%s", alert_type, key);
     unsigned int h = hash_str(full_key) % MAX_COOLDOWNS;
+    int first_expired_idx = -1;
+    int oldest_idx = h;
+    int64_t oldest_ts = ids->cooldowns[h].last_alert_sec;
 
     for (int i = 0; i < MAX_COOLDOWNS; ++i) {
         int idx = (h + i) % MAX_COOLDOWNS;
@@ -174,7 +182,20 @@ static int should_suppress(cmonitor_ids_t *ids, const char *alert_type, const ch
             ids->cooldowns[idx].last_alert_sec = now_sec;
             return 0;
         }
+        if (first_expired_idx == -1 && (now_sec - ids->cooldowns[idx].last_alert_sec >= 10)) {
+            first_expired_idx = idx;
+        }
+        if (ids->cooldowns[idx].last_alert_sec < oldest_ts) {
+            oldest_ts = ids->cooldowns[idx].last_alert_sec;
+            oldest_idx = idx;
+        }
     }
+
+    /* If cooldown table is completely full, recycle first expired slot or oldest slot */
+    int recycle_idx = (first_expired_idx != -1) ? first_expired_idx : oldest_idx;
+    ids->cooldowns[recycle_idx].in_use = 1;
+    snprintf(ids->cooldowns[recycle_idx].key, sizeof(ids->cooldowns[recycle_idx].key), "%s", full_key);
+    ids->cooldowns[recycle_idx].last_alert_sec = now_sec;
     return 0;
 }
 

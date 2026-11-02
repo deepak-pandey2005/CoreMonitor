@@ -185,6 +185,58 @@ void test_ids_arp_spoofing() {
     printf("✓ test_ids_arp_spoofing passed\n");
 }
 
+void test_ids_cooldown_and_host_saturation() {
+    cmonitor_ids_config_t cfg = cmonitor_ids_default_config();
+    cmonitor_ids_t *ids = cmonitor_ids_init(&cfg);
+
+    cmonitor_alert_t alerts[8];
+
+    // 1. Fill cooldown slots with 300 unique host/port pairs at ts_sec = 1000
+    for (int i = 0; i < 300; ++i) {
+        cmonitor_packet_meta_t pkt;
+        memset(&pkt, 0, sizeof(pkt));
+        pkt.ts_sec = 1000;
+        snprintf(pkt.src_ip, sizeof(pkt.src_ip), "10.0.%d.%d", (i >> 8) & 0xff, i & 0xff);
+        snprintf(pkt.dst_ip, sizeof(pkt.dst_ip), "192.168.1.1");
+        pkt.dst_port = 4444; // Metasploit port -> SUSPICIOUS_PORT
+        snprintf(pkt.protocol, sizeof(pkt.protocol), "TCP");
+        pkt.tcp_flags = CMONITOR_TCP_SYN;
+
+        // The first alert for each target should register
+        int count = cmonitor_ids_analyze(ids, &pkt, alerts, 8);
+        assert(count == 1);
+    }
+
+    // 2. Immediate duplicate query should be suppressed (< 10 sec)
+    cmonitor_packet_meta_t pkt_dup;
+    memset(&pkt_dup, 0, sizeof(pkt_dup));
+    pkt_dup.ts_sec = 1005;
+    snprintf(pkt_dup.src_ip, sizeof(pkt_dup.src_ip), "10.0.0.0");
+    snprintf(pkt_dup.dst_ip, sizeof(pkt_dup.dst_ip), "192.168.1.1");
+    pkt_dup.dst_port = 4444;
+    snprintf(pkt_dup.protocol, sizeof(pkt_dup.protocol), "TCP");
+    pkt_dup.tcp_flags = CMONITOR_TCP_SYN;
+
+    int dup_count = cmonitor_ids_analyze(ids, &pkt_dup, alerts, 8);
+    assert(dup_count == 0); // suppressed
+
+    // 3. At ts_sec = 1015 (> 10s cooldown), expired slots are recycled and new alerts fire
+    cmonitor_packet_meta_t pkt_expired;
+    memset(&pkt_expired, 0, sizeof(pkt_expired));
+    pkt_expired.ts_sec = 1015;
+    snprintf(pkt_expired.src_ip, sizeof(pkt_expired.src_ip), "10.0.0.0");
+    snprintf(pkt_expired.dst_ip, sizeof(pkt_expired.dst_ip), "192.168.1.1");
+    pkt_expired.dst_port = 4444;
+    snprintf(pkt_expired.protocol, sizeof(pkt_expired.protocol), "TCP");
+    pkt_expired.tcp_flags = CMONITOR_TCP_SYN;
+
+    int exp_count = cmonitor_ids_analyze(ids, &pkt_expired, alerts, 8);
+    assert(exp_count == 1); // alert fires again!
+
+    cmonitor_ids_free(ids);
+    printf("✓ test_ids_cooldown_and_host_saturation passed\n");
+}
+
 int main() {
     printf("Running C Core IDS Engine Tests...\n");
     test_ids_blacklisted_ip();
@@ -193,6 +245,7 @@ int main() {
     test_ids_port_scan_threshold();
     test_ids_dns_tunneling();
     test_ids_arp_spoofing();
+    test_ids_cooldown_and_host_saturation();
     printf("All C IDS Engine tests passed successfully!\n");
     return 0;
 }
