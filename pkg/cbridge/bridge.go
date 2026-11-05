@@ -225,6 +225,8 @@ type IDSConfig struct {
 	BandwidthSpikeBps  uint64
 	BandwidthWindowSec int
 	DNSTunnelLen       int
+	ICMPFloodThreshold int
+	ICMPFloodWindowSec int
 }
 
 func DefaultIDSConfig() IDSConfig {
@@ -237,6 +239,8 @@ func DefaultIDSConfig() IDSConfig {
 		BandwidthSpikeBps:  10000000,
 		BandwidthWindowSec: 2,
 		DNSTunnelLen:       60,
+		ICMPFloodThreshold: 50,
+		ICMPFloodWindowSec: 2,
 	}
 }
 
@@ -254,6 +258,16 @@ func NewIDSEngine(cfg IDSConfig) *IDSEngine {
 	cCfg.bw_spike_bytes_sec = C.size_t(cfg.BandwidthSpikeBps)
 	cCfg.bw_window_sec = C.int(cfg.BandwidthWindowSec)
 	cCfg.dns_tunnel_len = C.size_t(cfg.DNSTunnelLen)
+	if cfg.ICMPFloodThreshold <= 0 {
+		cCfg.icmp_flood_threshold = 50
+	} else {
+		cCfg.icmp_flood_threshold = C.int(cfg.ICMPFloodThreshold)
+	}
+	if cfg.ICMPFloodWindowSec <= 0 {
+		cCfg.icmp_flood_window_sec = 2
+	} else {
+		cCfg.icmp_flood_window_sec = C.int(cfg.ICMPFloodWindowSec)
+	}
 
 	handle := C.cmonitor_ids_init(&cCfg)
 	return &IDSEngine{handle: handle}

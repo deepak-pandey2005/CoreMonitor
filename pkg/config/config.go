@@ -45,6 +45,8 @@ type Config struct {
 		BandwidthSpikeBytesPerSec uint64 `yaml:"bandwidth_spike_bytes_per_sec"`
 		BandwidthWindowSeconds    int    `yaml:"bandwidth_window_seconds"`
 		DNSTunnelAnomalyLength    int    `yaml:"dns_tunnel_anomaly_length"`
+		ICMPFloodThreshold        int    `yaml:"icmp_flood_threshold"`
+		ICMPFloodWindowSeconds    int    `yaml:"icmp_flood_window_seconds"`
 	} `yaml:"ids"`
 
 	LiveDashboard bool `yaml:"live_dashboard"`
@@ -96,6 +98,8 @@ func DefaultConfig() *Config {
 	cfg.IDS.BandwidthSpikeBytesPerSec = 10000000 // 10 MB/s
 	cfg.IDS.BandwidthWindowSeconds = 2
 	cfg.IDS.DNSTunnelAnomalyLength = 60
+	cfg.IDS.ICMPFloodThreshold = 50
+	cfg.IDS.ICMPFloodWindowSeconds = 2
 
 	cfg.LiveDashboard = true
 	cfg.IPS = ips.DefaultConfig()

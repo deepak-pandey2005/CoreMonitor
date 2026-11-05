@@ -74,6 +74,8 @@ func NewEngine(cfg config.Config, capture *cbridge.Capture) (*Engine, error) {
 		BandwidthSpikeBps:  cfg.IDS.BandwidthSpikeBytesPerSec,
 		BandwidthWindowSec: cfg.IDS.BandwidthWindowSeconds,
 		DNSTunnelLen:       cfg.IDS.DNSTunnelAnomalyLength,
+		ICMPFloodThreshold: cfg.IDS.ICMPFloodThreshold,
+		ICMPFloodWindowSec: cfg.IDS.ICMPFloodWindowSeconds,
 	}
 
 	csvExp, err := storage.NewCSVExporter(cfg)

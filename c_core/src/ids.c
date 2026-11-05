@@ -110,6 +110,8 @@ cmonitor_ids_config_t cmonitor_ids_default_config(void) {
     cfg.bw_spike_bytes_sec = 10000000; /* 10 MB/s */
     cfg.bw_window_sec = 2;
     cfg.dns_tunnel_len = 60;
+    cfg.icmp_flood_threshold = 50;
+    cfg.icmp_flood_window_sec = 2;
     return cfg;
 }
 
@@ -416,24 +418,26 @@ int cmonitor_ids_analyze(cmonitor_ids_t *ids, const cmonitor_packet_meta_t *meta
         }
     }
 
-    /* 6. ICMP Ping Flood */
-    if (strcmp(meta->protocol, "ICMP") == 0) {
+    /* 6. ICMP / ICMPv6 Ping Flood */
+    if (strcmp(meta->protocol, "ICMP") == 0 || strcmp(meta->protocol, "ICMPv6") == 0) {
         int ic_slot = tracker->icmp_head;
         tracker->icmp_events[ic_slot] = now_sec;
         tracker->icmp_head = (ic_slot + 1) % MAX_ICMP_EVENTS;
         if (tracker->icmp_count < MAX_ICMP_EVENTS) tracker->icmp_count++;
 
+        int win_sec = ids->cfg.icmp_flood_window_sec > 0 ? ids->cfg.icmp_flood_window_sec : 2;
+        int64_t icmp_cutoff = now_sec - win_sec;
         int active_icmps = 0;
-        int64_t icmp_cutoff = now_sec - 2;
         for (int i = 0; i < tracker->icmp_count; ++i) {
             if (tracker->icmp_events[i] >= icmp_cutoff) active_icmps++;
         }
 
-        if (active_icmps >= 50) {
+        int thresh = ids->cfg.icmp_flood_threshold > 0 ? ids->cfg.icmp_flood_threshold : 50;
+        if (active_icmps >= thresh) {
             if (!should_suppress(ids, "ICMP_FLOOD", meta->src_ip, now_sec)) {
                 char msg[256];
-                snprintf(msg, sizeof(msg), "ICMP ping flood detected from %s (%d packets in 2s)",
-                         meta->src_ip, active_icmps);
+                snprintf(msg, sizeof(msg), "%s ping flood detected from %s (%d packets in %ds)",
+                         meta->protocol, meta->src_ip, active_icmps, win_sec);
                 add_alert(out_alerts, &alert_count, max_alerts, meta, CMONITOR_SEV_HIGH,
                           "ICMP_FLOOD", msg, "flood=ICMP");
             }

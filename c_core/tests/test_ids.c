@@ -237,6 +237,39 @@ void test_ids_cooldown_and_host_saturation() {
     printf("✓ test_ids_cooldown_and_host_saturation passed\n");
 }
 
+void test_ids_icmpv6_flood() {
+    cmonitor_ids_config_t cfg = cmonitor_ids_default_config();
+    cfg.icmp_flood_threshold = 10;
+    cfg.icmp_flood_window_sec = 2;
+    cmonitor_ids_t *ids = cmonitor_ids_init(&cfg);
+
+    cmonitor_alert_t alerts[8];
+    int triggered = 0;
+
+    for (int i = 0; i < 15; ++i) {
+        cmonitor_packet_meta_t pkt;
+        memset(&pkt, 0, sizeof(pkt));
+        pkt.ts_sec = 1000;
+        snprintf(pkt.src_ip, sizeof(pkt.src_ip), "2001:db8::100");
+        snprintf(pkt.dst_ip, sizeof(pkt.dst_ip), "2001:db8::1");
+        snprintf(pkt.protocol, sizeof(pkt.protocol), "ICMPv6");
+
+        int count = cmonitor_ids_analyze(ids, &pkt, alerts, 8);
+        for (int j = 0; j < count; ++j) {
+            if (strcmp(alerts[j].alert_type, "ICMP_FLOOD") == 0) {
+                triggered = 1;
+                assert(strstr(alerts[j].message, "ICMPv6") != NULL);
+                break;
+            }
+        }
+        if (triggered) break;
+    }
+    assert(triggered == 1);
+
+    cmonitor_ids_free(ids);
+    printf("✓ test_ids_icmpv6_flood passed\n");
+}
+
 int main() {
     printf("Running C Core IDS Engine Tests...\n");
     test_ids_blacklisted_ip();
@@ -246,6 +279,7 @@ int main() {
     test_ids_dns_tunneling();
     test_ids_arp_spoofing();
     test_ids_cooldown_and_host_saturation();
+    test_ids_icmpv6_flood();
     printf("All C IDS Engine tests passed successfully!\n");
     return 0;
 }
