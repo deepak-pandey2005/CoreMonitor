@@ -213,6 +213,7 @@ func (c *Capture) Close() {
 }
 
 type IDSEngine struct {
+	mu     sync.Mutex
 	handle *C.cmonitor_ids_t
 }
 
@@ -274,7 +275,14 @@ func NewIDSEngine(cfg IDSConfig) *IDSEngine {
 }
 
 func (ids *IDSEngine) Analyze(meta *PacketMeta) []Alert {
-	if ids.handle == nil || meta == nil {
+	if meta == nil {
+		return nil
+	}
+
+	ids.mu.Lock()
+	defer ids.mu.Unlock()
+
+	if ids.handle == nil {
 		return nil
 	}
 
@@ -327,6 +335,9 @@ func (ids *IDSEngine) Analyze(meta *PacketMeta) []Alert {
 }
 
 func (ids *IDSEngine) Close() {
+	ids.mu.Lock()
+	defer ids.mu.Unlock()
+
 	if ids.handle != nil {
 		C.cmonitor_ids_free(ids.handle)
 		ids.handle = nil

@@ -33,6 +33,39 @@ func TestIDSEngineBridge(t *testing.T) {
 	}
 }
 
+func TestIDSEngineConcurrentAnalyze(t *testing.T) {
+	ids := NewIDSEngine(DefaultIDSConfig())
+	defer ids.Close()
+
+	const numGoroutines = 8
+	const numPackets = 100
+	done := make(chan bool, numGoroutines)
+
+	for g := 0; g < numGoroutines; g++ {
+		go func(gid int) {
+			for i := 0; i < numPackets; i++ {
+				meta := &PacketMeta{
+					Timestamp:   time.Now().UTC(),
+					SrcIP:       "192.168.1.10",
+					DstIP:       "10.0.0.1",
+					SrcPort:     uint16(10000 + gid),
+					DstPort:     4444, // Metasploit port
+					Protocol:    "TCP",
+					TCPFlags:    CMonitorTCPSYN,
+					TCPFlagsStr: "SYN",
+					PacketSize:  64,
+				}
+				_ = ids.Analyze(meta)
+			}
+			done <- true
+		}(g)
+	}
+
+	for g := 0; g < numGoroutines; g++ {
+		<-done
+	}
+}
+
 func TestCaptureOfflineHTTPAndTLS(t *testing.T) {
 	cap, err := OpenOffline("../../tests/fixtures/attack_sample.pcap", "")
 	if err != nil {
