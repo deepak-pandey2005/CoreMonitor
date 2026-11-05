@@ -166,17 +166,10 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	// Security Alerts
 	b.WriteString("# HELP coremonitor_alerts_total Total security intrusion alerts detected\n")
 	b.WriteString("# TYPE coremonitor_alerts_total counter\n")
-	alertCounts := make(map[string]map[string]int) // severity -> alertType -> count
-	for _, a := range stats.RecentAlerts {
-		if alertCounts[a.Severity] == nil {
-			alertCounts[a.Severity] = make(map[string]int)
-		}
-		alertCounts[a.Severity][a.AlertType]++
-	}
-	if len(alertCounts) == 0 {
-		b.WriteString("coremonitor_alerts_total 0\n")
+	if len(stats.CumulativeAlerts) == 0 {
+		b.WriteString(fmt.Sprintf("coremonitor_alerts_total %d\n", stats.TotalAlerts))
 	} else {
-		for sev, types := range alertCounts {
+		for sev, types := range stats.CumulativeAlerts {
 			for aType, count := range types {
 				b.WriteString(fmt.Sprintf("coremonitor_alerts_total{severity=%q,alert_type=%q} %d\n", sev, aType, count))
 			}

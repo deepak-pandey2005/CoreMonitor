@@ -114,3 +114,30 @@ func TestPrometheusMetricsServer(t *testing.T) {
 	}
 }
 
+func TestPrometheusAlertsMonotonicity(t *testing.T) {
+	stats := engine.Stats{
+		TotalPackets: 1000,
+		TotalBytes:   50000,
+		TotalAlerts:  120,
+		CumulativeAlerts: map[string]map[string]uint64{
+			"HIGH": {
+				"PORT_SCAN_SYN": 120,
+			},
+		},
+	}
+
+	b := strings.Builder{}
+	b.WriteString("# HELP coremonitor_alerts_total Total security intrusion alerts detected\n")
+	b.WriteString("# TYPE coremonitor_alerts_total counter\n")
+	for sev, types := range stats.CumulativeAlerts {
+		for aType, count := range types {
+			b.WriteString(fmt.Sprintf("coremonitor_alerts_total{severity=%q,alert_type=%q} %d\n", sev, aType, count))
+		}
+	}
+
+	out := b.String()
+	if !strings.Contains(out, `coremonitor_alerts_total{severity="HIGH",alert_type="PORT_SCAN_SYN"} 120`) {
+		t.Errorf("expected monotonic alert count of 120, got:\n%s", out)
+	}
+}
+

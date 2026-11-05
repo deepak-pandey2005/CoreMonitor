@@ -17,9 +17,11 @@ import (
 
 type Stats struct {
 	StartTime       time.Time
-	TotalPackets    uint64
-	TotalBytes      uint64
-	ProtocolCounts  map[string]uint64
+	TotalPackets     uint64
+	TotalBytes       uint64
+	TotalAlerts      uint64
+	CumulativeAlerts map[string]map[string]uint64
+	ProtocolCounts   map[string]uint64
 	TopTalkersBytes map[string]uint64
 	RecentAlerts    []cbridge.Alert
 	RecentPackets   []*cbridge.PacketMeta
@@ -112,9 +114,10 @@ func NewEngine(cfg config.Config, capture *cbridge.Capture) (*Engine, error) {
 		influxExp:   influxExp,
 		stopChan:  make(chan struct{}),
 		stats: Stats{
-			StartTime:       time.Now(),
-			ActiveBPFFilter: cfg.Network.BPFFilter,
-			ProtocolCounts:  make(map[string]uint64),
+			StartTime:        time.Now(),
+			ActiveBPFFilter:  cfg.Network.BPFFilter,
+			CumulativeAlerts: make(map[string]map[string]uint64),
+			ProtocolCounts:   make(map[string]uint64),
 			TopTalkersBytes: make(map[string]uint64),
 			RecentAlerts:    make([]cbridge.Alert, 0, 50),
 			RecentPackets:   make([]*cbridge.PacketMeta, 0, 20),
@@ -236,6 +239,15 @@ func (e *Engine) updateStats(meta *cbridge.PacketMeta, alerts []cbridge.Alert) {
 	e.stats.RecentPackets = append(e.stats.RecentPackets, meta)
 
 	for _, a := range alerts {
+		e.stats.TotalAlerts++
+		if e.stats.CumulativeAlerts == nil {
+			e.stats.CumulativeAlerts = make(map[string]map[string]uint64)
+		}
+		if e.stats.CumulativeAlerts[a.Severity] == nil {
+			e.stats.CumulativeAlerts[a.Severity] = make(map[string]uint64)
+		}
+		e.stats.CumulativeAlerts[a.Severity][a.AlertType]++
+
 		if len(e.stats.RecentAlerts) >= 50 {
 			e.stats.RecentAlerts = e.stats.RecentAlerts[1:]
 		}
@@ -282,6 +294,14 @@ func (e *Engine) GetStats() Stats {
 	alertsCopy := make([]cbridge.Alert, len(e.stats.RecentAlerts))
 	copy(alertsCopy, e.stats.RecentAlerts)
 
+	cumAlertsCopy := make(map[string]map[string]uint64, len(e.stats.CumulativeAlerts))
+	for sev, types := range e.stats.CumulativeAlerts {
+		cumAlertsCopy[sev] = make(map[string]uint64, len(types))
+		for aType, count := range types {
+			cumAlertsCopy[sev][aType] = count
+		}
+	}
+
 	pktsCopy := make([]*cbridge.PacketMeta, len(e.stats.RecentPackets))
 	copy(pktsCopy, e.stats.RecentPackets)
 
@@ -303,10 +323,12 @@ func (e *Engine) GetStats() Stats {
 	}
 
 	return Stats{
-		StartTime:       e.stats.StartTime,
-		TotalPackets:    e.stats.TotalPackets,
-		TotalBytes:      e.stats.TotalBytes,
-		ProtocolCounts:  protoCopy,
+		StartTime:        e.stats.StartTime,
+		TotalPackets:     e.stats.TotalPackets,
+		TotalBytes:       e.stats.TotalBytes,
+		TotalAlerts:      e.stats.TotalAlerts,
+		CumulativeAlerts: cumAlertsCopy,
+		ProtocolCounts:   protoCopy,
 		TopTalkersBytes: talkersCopy,
 		RecentAlerts:    alertsCopy,
 		RecentPackets:   pktsCopy,
