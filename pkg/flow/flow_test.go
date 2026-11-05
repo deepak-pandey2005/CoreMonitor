@@ -85,7 +85,7 @@ func TestFlowTerminationTCPFinAndSweep(t *testing.T) {
 	defer mgr.Close()
 
 	t0 := time.Now().UTC()
-	p := &cbridge.PacketMeta{
+	p1 := &cbridge.PacketMeta{
 		Timestamp:  t0,
 		Protocol:   "TCP",
 		SrcIP:      "10.0.0.1",
@@ -93,12 +93,28 @@ func TestFlowTerminationTCPFinAndSweep(t *testing.T) {
 		SrcPort:    8080,
 		DstPort:    9090,
 		PacketSize: 60,
-		TCPFlags:   0x01, // FIN
+		TCPFlags:   0x01, // FIN from Initiator
 	}
 
-	f := mgr.Ingest(p)
+	f := mgr.Ingest(p1)
+	if f.State != "CLOSING" {
+		t.Errorf("expected flow state CLOSING after single FIN, got %s", f.State)
+	}
+
+	// Responder FIN
+	p2 := &cbridge.PacketMeta{
+		Timestamp:  t0.Add(10 * time.Millisecond),
+		Protocol:   "TCP",
+		SrcIP:      "10.0.0.2",
+		DstIP:      "10.0.0.1",
+		SrcPort:    9090,
+		DstPort:    8080,
+		PacketSize: 60,
+		TCPFlags:   0x01, // FIN from Responder
+	}
+	f = mgr.Ingest(p2)
 	if f.State != "CLOSED" {
-		t.Errorf("expected flow state CLOSED after FIN, got %s", f.State)
+		t.Errorf("expected flow state CLOSED after both FINs, got %s", f.State)
 	}
 
 	// Active flows should contain 1 flow before sweep
@@ -117,6 +133,26 @@ func TestFlowTerminationTCPFinAndSweep(t *testing.T) {
 	stats := mgr.GetStats()
 	if stats.ClosedFlows != 1 {
 		t.Errorf("expected 1 closed flow in stats, got %d", stats.ClosedFlows)
+	}
+}
+
+func TestFlowRSTTermination(t *testing.T) {
+	mgr := NewManager(10*time.Second, 60*time.Second)
+	defer mgr.Close()
+
+	p := &cbridge.PacketMeta{
+		Timestamp:  time.Now(),
+		Protocol:   "TCP",
+		SrcIP:      "10.0.0.1",
+		DstIP:      "10.0.0.2",
+		SrcPort:    5000,
+		DstPort:    80,
+		PacketSize: 60,
+		TCPFlags:   0x04, // RST
+	}
+	f := mgr.Ingest(p)
+	if f.State != "CLOSED" {
+		t.Errorf("expected flow state CLOSED after RST, got %s", f.State)
 	}
 }
 

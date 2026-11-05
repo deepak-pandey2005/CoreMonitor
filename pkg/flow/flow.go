@@ -63,8 +63,10 @@ type Flow struct {
 	TotalPackets uint64
 	TotalBytes   uint64
 
-	TCPFlags uint8
-	State    string // "ACTIVE", "CLOSED", "TIMED_OUT"
+	TCPFlags     uint8
+	FinInitiator bool
+	FinResponder bool
+	State        string // "ACTIVE", "CLOSING", "CLOSED", "TIMED_OUT"
 
 	TLSSNI     string
 	HTTPMethod string
@@ -217,9 +219,24 @@ func (m *Manager) Ingest(meta *cbridge.PacketMeta) *Flow {
 	}
 
 	f.TCPFlags |= meta.TCPFlags
-	// TCP FIN (0x01) or RST (0x04) marks flow closed
-	if meta.TCPFlags&0x01 != 0 || meta.TCPFlags&0x04 != 0 {
+
+	isFromInitiator := (meta.SrcIP == f.InitiatorIP && meta.SrcPort == f.InitiatorPort)
+	if meta.TCPFlags&0x04 != 0 {
+		// TCP RST immediately terminates connection
 		f.State = "CLOSED"
+	} else if meta.TCPFlags&0x01 != 0 {
+		// TCP FIN received
+		if isFromInitiator {
+			f.FinInitiator = true
+		} else {
+			f.FinResponder = true
+		}
+
+		if f.FinInitiator && f.FinResponder {
+			f.State = "CLOSED"
+		} else {
+			f.State = "CLOSING"
+		}
 	}
 
 	_ = isInitiator
