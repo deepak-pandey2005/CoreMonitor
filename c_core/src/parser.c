@@ -247,6 +247,8 @@ static void parse_http_request(const uint8_t *data, size_t len,
 
 static void parse_l4_protocol(const uint8_t *data, uint32_t caplen, size_t l4_offset,
                               uint8_t protocol, cmonitor_packet_meta_t *out) {
+    if (l4_offset >= caplen) return;
+
     if (protocol == IPPROTO_TCP) {
         strncpy(out->protocol, "TCP", sizeof(out->protocol) - 1);
         if (caplen >= l4_offset + sizeof(struct tcphdr)) {
@@ -368,6 +370,7 @@ int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
     if (ether_type == ETHERTYPE_IP) {
         if (caplen < ip_offset + sizeof(struct iphdr)) return 0;
         const struct iphdr *ip = (const struct iphdr*)(data + ip_offset);
+        if (ip->ihl < 5) return 0;
 
         inet_ntop(AF_INET, &(ip->saddr), out->src_ip, sizeof(out->src_ip));
         inet_ntop(AF_INET, &(ip->daddr), out->dst_ip, sizeof(out->dst_ip));
@@ -379,7 +382,8 @@ int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
             out->is_broadcast = 1;
         }
 
-        size_t ip_hdr_len = ip->ihl * 4;
+        size_t ip_hdr_len = (size_t)ip->ihl * 4;
+        if (caplen < ip_offset + ip_hdr_len) return 0;
         size_t l4_offset = ip_offset + ip_hdr_len;
         parse_l4_protocol(data, caplen, l4_offset, ip->protocol, out);
     } else if (ether_type == ETHERTYPE_IPV6) {

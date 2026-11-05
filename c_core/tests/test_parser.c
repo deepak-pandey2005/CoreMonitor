@@ -327,6 +327,38 @@ void test_parse_ipv6_tcp() {
            meta.src_ip, meta.src_port, meta.dst_ip, meta.dst_port, meta.protocol, meta.service);
 }
 
+void test_parse_ipv4_malformed_ihl() {
+    uint8_t buffer[64] = {0};
+    struct ether_header *eth = (struct ether_header*)buffer;
+    eth->ether_type = htons(ETHERTYPE_IP);
+
+    struct iphdr *ip = (struct iphdr*)(buffer + sizeof(struct ether_header));
+    ip->version = 4;
+    ip->protocol = IPPROTO_TCP;
+    inet_pton(AF_INET, "10.0.0.1", &ip->saddr);
+    inet_pton(AF_INET, "10.0.0.2", &ip->daddr);
+
+    // Case 1: ihl < 5 (illegal IPv4 header length)
+    ip->ihl = 4;
+    cmonitor_packet_meta_t meta1;
+    int res1 = cmonitor_parse_packet(buffer, sizeof(buffer), sizeof(buffer), 1000, 0, &meta1);
+    assert(res1 == 0);
+    // Protocol should not be parsed as TCP
+    assert(strcmp(meta1.protocol, "OTHER") == 0);
+
+    // Case 2: Truncated capture where caplen < ip_offset + ihl * 4
+    ip->ihl = 10; // 40-byte IP header with options
+    cmonitor_packet_meta_t meta2;
+    // caplen is only 14 (eth) + 24 = 38 bytes < 14 + 40
+    int res2 = cmonitor_parse_packet(buffer, 38, sizeof(buffer), 1000, 0, &meta2);
+    assert(res2 == 0);
+    assert(strcmp(meta2.protocol, "IPv4") == 0);
+    assert(meta2.src_port == 0);
+    assert(meta2.dst_port == 0);
+
+    printf("✓ test_parse_ipv4_malformed_ihl passed\n");
+}
+
 int main() {
     printf("Running C Core Parser Tests...\n");
     test_parse_tcp_syn();
@@ -336,6 +368,7 @@ int main() {
     test_parse_arp_reply();
     test_parse_8021q_vlan();
     test_parse_ipv6_tcp();
+    test_parse_ipv4_malformed_ihl();
     printf("All C Parser tests passed successfully!\n");
     return 0;
 }
