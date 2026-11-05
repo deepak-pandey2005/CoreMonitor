@@ -132,3 +132,33 @@ func TestStorageBufferedThroughput(t *testing.T) {
 	csvExp.Close()
 	pcapExp.Close()
 }
+
+func TestInfluxExporterSafeLifecycle(t *testing.T) {
+	cfg := *config.DefaultConfig()
+	cfg.InfluxDB.Enabled = true
+	cfg.InfluxDB.BatchSize = 10
+	cfg.InfluxDB.FlushIntervalSeconds = 1
+	cfg.InfluxDB.URL = "http://127.0.0.1:9999" // Non-existent server, should fail gracefully
+
+	exp := NewInfluxExporter(cfg)
+	if exp == nil {
+		t.Fatal("expected non-nil InfluxExporter")
+	}
+
+	meta := &cbridge.PacketMeta{
+		Timestamp:  time.Now().UTC(),
+		SrcIP:      "192.168.1.1",
+		DstIP:      "8.8.8.8",
+		Protocol:   "UDP",
+		PacketSize: 64,
+	}
+
+	// Write more packets than batch size to trigger flushes
+	for i := 0; i < 25; i++ {
+		exp.WritePacket(meta)
+	}
+
+	// Multiple Close calls must be idempotent and not panic
+	exp.Close()
+	exp.Close()
+}

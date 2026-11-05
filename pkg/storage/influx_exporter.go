@@ -20,7 +20,11 @@ type InfluxExporter struct {
 	mu         sync.Mutex
 	buffer     []string
 	lastFlush  time.Time
+	batchSize  int
+	flushChan  chan struct{}
 	stopChan   chan struct{}
+	stopOnce   sync.Once
+	wg         sync.WaitGroup
 }
 
 func NewInfluxExporter(cfg config.Config) *InfluxExporter {
@@ -34,29 +38,43 @@ func NewInfluxExporter(cfg config.Config) *InfluxExporter {
 		url.QueryEscape(cfg.InfluxDB.Bucket),
 	)
 
+	batchSize := cfg.InfluxDB.BatchSize
+	if batchSize <= 0 {
+		batchSize = 50
+	}
+
 	exp := &InfluxExporter{
 		cfg:       cfg,
 		client:    &http.Client{Timeout: 2 * time.Second},
 		endpoint:  endpoint,
-		buffer:    make([]string, 0, cfg.InfluxDB.BatchSize),
+		batchSize: batchSize,
+		buffer:    make([]string, 0, batchSize),
 		lastFlush: time.Now(),
+		flushChan: make(chan struct{}, 1),
 		stopChan:  make(chan struct{}),
 	}
 
+	exp.wg.Add(1)
 	go exp.flusher()
 	return exp
 }
 
 func (exp *InfluxExporter) flusher() {
-	ticker := time.NewTicker(time.Duration(exp.cfg.InfluxDB.FlushIntervalSeconds) * time.Second)
+	defer exp.wg.Done()
+	interval := exp.cfg.InfluxDB.FlushIntervalSeconds
+	if interval <= 0 {
+		interval = 2
+	}
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
 			exp.Flush()
-		case <-exp.stopChan:
+		case <-exp.flushChan:
 			exp.Flush()
+		case <-exp.stopChan:
 			return
 		}
 	}
@@ -141,8 +159,11 @@ func (exp *InfluxExporter) WritePacket(meta *cbridge.PacketMeta) {
 		exp.buffer = append(exp.buffer, httpLine)
 	}
 
-	if len(exp.buffer) >= exp.cfg.InfluxDB.BatchSize {
-		go exp.Flush()
+	if len(exp.buffer) >= exp.batchSize {
+		select {
+		case exp.flushChan <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -179,7 +200,12 @@ func (exp *InfluxExporter) WriteAlerts(alerts []cbridge.Alert) {
 		exp.buffer = append(exp.buffer, line)
 	}
 
-	go exp.Flush()
+	if len(exp.buffer) >= exp.batchSize {
+		select {
+		case exp.flushChan <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (exp *InfluxExporter) Flush() {
@@ -209,9 +235,12 @@ func (exp *InfluxExporter) Flush() {
 }
 
 func (exp *InfluxExporter) Close() {
-	if exp.stopChan != nil {
-		close(exp.stopChan)
-		exp.stopChan = nil
+	if !exp.cfg.InfluxDB.Enabled {
+		return
 	}
-	exp.Flush()
+	exp.stopOnce.Do(func() {
+		close(exp.stopChan)
+		exp.wg.Wait()
+		exp.Flush()
+	})
 }
