@@ -185,6 +185,52 @@ void test_ids_arp_spoofing() {
     printf("✓ test_ids_arp_spoofing passed\n");
 }
 
+void test_ids_arp_table_saturation() {
+    cmonitor_ids_config_t cfg = cmonitor_ids_default_config();
+    cmonitor_ids_t *ids = cmonitor_ids_init(&cfg);
+
+    cmonitor_alert_t alerts[8];
+
+    // Fill all 256 ARP table entries
+    for (int i = 0; i < 256; ++i) {
+        cmonitor_packet_meta_t pkt;
+        memset(&pkt, 0, sizeof(pkt));
+        pkt.ts_sec = 1000 + i;
+        snprintf(pkt.protocol, sizeof(pkt.protocol), "ARP");
+        snprintf(pkt.src_ip, sizeof(pkt.src_ip), "10.1.%d.%d", (i >> 8) & 0xff, i & 0xff);
+        snprintf(pkt.src_mac, sizeof(pkt.src_mac), "00:11:22:33:%02x:%02x", (i >> 8) & 0xff, i & 0xff);
+        pkt.arp_opcode = 1;
+        int count = cmonitor_ids_analyze(ids, &pkt, alerts, 8);
+        assert(count == 0);
+    }
+
+    // Now insert a 257th host - should evict oldest (10.1.0.0 with ts=1000)
+    cmonitor_packet_meta_t pkt_new;
+    memset(&pkt_new, 0, sizeof(pkt_new));
+    pkt_new.ts_sec = 2000;
+    snprintf(pkt_new.protocol, sizeof(pkt_new.protocol), "ARP");
+    snprintf(pkt_new.src_ip, sizeof(pkt_new.src_ip), "10.2.0.1");
+    snprintf(pkt_new.src_mac, sizeof(pkt_new.src_mac), "aa:bb:cc:dd:ee:01");
+    pkt_new.arp_opcode = 1;
+    int c1 = cmonitor_ids_analyze(ids, &pkt_new, alerts, 8);
+    assert(c1 == 0);
+
+    // Now send a spoofed reply for 10.2.0.1 from a different MAC - must trigger ARP_SPOOFING!
+    cmonitor_packet_meta_t pkt_spoof;
+    memset(&pkt_spoof, 0, sizeof(pkt_spoof));
+    pkt_spoof.ts_sec = 2001;
+    snprintf(pkt_spoof.protocol, sizeof(pkt_spoof.protocol), "ARP");
+    snprintf(pkt_spoof.src_ip, sizeof(pkt_spoof.src_ip), "10.2.0.1");
+    snprintf(pkt_spoof.src_mac, sizeof(pkt_spoof.src_mac), "ff:00:00:00:00:99");
+    pkt_spoof.arp_opcode = 2;
+    int c2 = cmonitor_ids_analyze(ids, &pkt_spoof, alerts, 8);
+    assert(c2 == 1);
+    assert(strcmp(alerts[0].alert_type, "ARP_SPOOFING") == 0);
+
+    cmonitor_ids_free(ids);
+    printf("✓ test_ids_arp_table_saturation passed\n");
+}
+
 void test_ids_cooldown_and_host_saturation() {
     cmonitor_ids_config_t cfg = cmonitor_ids_default_config();
     cmonitor_ids_t *ids = cmonitor_ids_init(&cfg);
@@ -278,6 +324,7 @@ int main() {
     test_ids_port_scan_threshold();
     test_ids_dns_tunneling();
     test_ids_arp_spoofing();
+    test_ids_arp_table_saturation();
     test_ids_cooldown_and_host_saturation();
     test_ids_icmpv6_flood();
     printf("All C IDS Engine tests passed successfully!\n");
