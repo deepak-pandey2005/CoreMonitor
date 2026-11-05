@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"sort"
 	"sync"
 	"time"
 
@@ -43,6 +44,8 @@ type ratePoint struct {
 	bytes uint64
 }
 
+const DefaultMaxTopTalkers = 10000
+
 type Engine struct {
 	cfg         config.Config
 	capture     *cbridge.Capture
@@ -56,14 +59,15 @@ type Engine struct {
 	pcapExp   *storage.PCAPExporter
 	influxExp *storage.InfluxExporter
 
-	mu         sync.RWMutex
-	stats      Stats
-	stopChan   chan struct{}
-	stopOnce   sync.Once
-	running    bool
-	pacer      *ReplayPacer
-	isReplay   bool
-	replayDone bool
+	mu            sync.RWMutex
+	stats         Stats
+	stopChan      chan struct{}
+	stopOnce      sync.Once
+	running       bool
+	pacer         *ReplayPacer
+	isReplay      bool
+	replayDone    bool
+	maxTopTalkers int
 }
 
 func NewEngine(cfg config.Config, capture *cbridge.Capture) (*Engine, error) {
@@ -111,8 +115,9 @@ func NewEngine(cfg config.Config, capture *cbridge.Capture) (*Engine, error) {
 		siemExp:     siem.NewExporter(cfg.SIEM),
 		csvExp:      csvExp,
 		pcapExp:     pcapExp,
-		influxExp:   influxExp,
-		stopChan:  make(chan struct{}),
+		influxExp:     influxExp,
+		maxTopTalkers: DefaultMaxTopTalkers,
+		stopChan:      make(chan struct{}),
 		stats: Stats{
 			StartTime:        time.Now(),
 			ActiveBPFFilter:  cfg.Network.BPFFilter,
@@ -230,6 +235,15 @@ func (e *Engine) updateStats(meta *cbridge.PacketMeta, alerts []cbridge.Alert) {
 	e.stats.ProtocolCounts[meta.Protocol]++
 
 	if meta.SrcIP != "" && meta.SrcIP != "unknown" {
+		limit := e.maxTopTalkers
+		if limit <= 0 {
+			limit = DefaultMaxTopTalkers
+		}
+		if _, exists := e.stats.TopTalkersBytes[meta.SrcIP]; !exists {
+			if len(e.stats.TopTalkersBytes) >= limit {
+				e.pruneTopTalkersLocked()
+			}
+		}
 		e.stats.TopTalkersBytes[meta.SrcIP] += uint64(meta.PacketSize)
 	}
 
@@ -417,6 +431,39 @@ func (e *Engine) GetFlowManager() *flow.Manager {
 
 func (e *Engine) GetSIEMExporter() *siem.Exporter {
 	return e.siemExp
+}
+
+func (e *Engine) SetMaxTopTalkers(max int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if max <= 0 {
+		max = DefaultMaxTopTalkers
+	}
+	e.maxTopTalkers = max
+}
+
+func (e *Engine) pruneTopTalkersLocked() {
+	if len(e.stats.TopTalkersBytes) == 0 {
+		return
+	}
+	type ipByte struct {
+		ip    string
+		bytes uint64
+	}
+	all := make([]ipByte, 0, len(e.stats.TopTalkersBytes))
+	for ip, b := range e.stats.TopTalkersBytes {
+		all = append(all, ipByte{ip: ip, bytes: b})
+	}
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].bytes < all[j].bytes
+	})
+	toRemove := len(all) / 4
+	if toRemove == 0 {
+		toRemove = 1
+	}
+	for i := 0; i < toRemove && i < len(all); i++ {
+		delete(e.stats.TopTalkersBytes, all[i].ip)
+	}
 }
 
 func (e *Engine) Stop() {

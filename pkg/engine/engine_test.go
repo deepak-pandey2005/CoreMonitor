@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -267,5 +268,32 @@ func TestEngineSIEMExport(t *testing.T) {
 	stats := eng.GetStats()
 	if stats.SIEMStats.EventsSent == 0 {
 		t.Errorf("expected SIEM events sent > 0, got %d", stats.SIEMStats.EventsSent)
+	}
+}
+
+func TestEngineBoundedTopTalkers(t *testing.T) {
+	eng := &Engine{
+		stats: Stats{
+			TopTalkersBytes: make(map[string]uint64),
+			ProtocolCounts:  make(map[string]uint64),
+		},
+		maxTopTalkers: 20,
+	}
+
+	for i := 0; i < 50; i++ {
+		meta := &cbridge.PacketMeta{
+			SrcIP:      fmt.Sprintf("192.168.1.%d", i),
+			PacketSize: uint32(100 + i),
+			Protocol:   "TCP",
+		}
+		eng.updateStats(meta, nil)
+	}
+
+	stats := eng.GetStats()
+	if len(stats.TopTalkersBytes) > 20 {
+		t.Errorf("expected TopTalkersBytes <= 20, got %d", len(stats.TopTalkersBytes))
+	}
+	if len(stats.TopTalkersBytes) == 0 {
+		t.Errorf("expected TopTalkersBytes > 0, got %d", len(stats.TopTalkersBytes))
 	}
 }
