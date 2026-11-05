@@ -31,6 +31,8 @@ func DefaultConfig() Config {
 	}
 }
 
+const DefaultMaxCooldownEntries = 10000
+
 // Dispatcher manages non-blocking async alert delivery to external webhooks.
 type Dispatcher struct {
 	cfg        Config
@@ -39,8 +41,9 @@ type Dispatcher struct {
 	stopChan   chan struct{}
 	wg         sync.WaitGroup
 
-	mu        sync.Mutex
-	cooldowns map[string]time.Time
+	mu         sync.Mutex
+	cooldowns  map[string]time.Time
+	maxEntries int
 }
 
 type alertJob struct {
@@ -50,11 +53,19 @@ type alertJob struct {
 
 // NewDispatcher creates an async webhook dispatcher with a background worker pool.
 func NewDispatcher(cfg Config) *Dispatcher {
+	return NewDispatcherWithCapacity(cfg, DefaultMaxCooldownEntries)
+}
+
+// NewDispatcherWithCapacity creates an async webhook dispatcher with a bounded cooldown capacity.
+func NewDispatcherWithCapacity(cfg Config, maxEntries int) *Dispatcher {
 	if cfg.CooldownSeconds <= 0 {
 		cfg.CooldownSeconds = 30
 	}
 	if cfg.MinSeverity == "" {
 		cfg.MinSeverity = "HIGH"
+	}
+	if maxEntries <= 0 {
+		maxEntries = DefaultMaxCooldownEntries
 	}
 
 	d := &Dispatcher{
@@ -63,6 +74,7 @@ func NewDispatcher(cfg Config) *Dispatcher {
 		alertQueue: make(chan alertJob, 256),
 		stopChan:   make(chan struct{}),
 		cooldowns:  make(map[string]time.Time),
+		maxEntries: maxEntries,
 	}
 
 	if cfg.Enabled {
@@ -85,13 +97,38 @@ func (d *Dispatcher) Dispatch(alert cbridge.Alert, isJailed bool) bool {
 
 	// Check Cooldown
 	cooldownKey := fmt.Sprintf("%s:%s", alert.SrcIP, alert.AlertType)
+	cooldownDur := time.Duration(d.cfg.CooldownSeconds) * time.Second
 	d.mu.Lock()
 	now := time.Now()
 	lastSent, exists := d.cooldowns[cooldownKey]
-	if exists && now.Sub(lastSent) < time.Duration(d.cfg.CooldownSeconds)*time.Second {
+	if exists && now.Sub(lastSent) < cooldownDur {
 		d.mu.Unlock()
 		return false
 	}
+
+	if len(d.cooldowns) >= d.maxEntries {
+		// Prune expired entries
+		for k, t := range d.cooldowns {
+			if now.Sub(t) >= cooldownDur {
+				delete(d.cooldowns, k)
+			}
+		}
+		// If still at capacity, evict a batch
+		if len(d.cooldowns) >= d.maxEntries {
+			evictCount := d.maxEntries / 4
+			if evictCount == 0 {
+				evictCount = 1
+			}
+			for k := range d.cooldowns {
+				delete(d.cooldowns, k)
+				evictCount--
+				if evictCount <= 0 {
+					break
+				}
+			}
+		}
+	}
+
 	d.cooldowns[cooldownKey] = now
 	d.mu.Unlock()
 
@@ -102,6 +139,13 @@ func (d *Dispatcher) Dispatch(alert cbridge.Alert, isJailed bool) bool {
 		// Queue full, drop alert rather than blocking datapath
 		return false
 	}
+}
+
+// CooldownLen returns the current number of tracked cooldown keys.
+func (d *Dispatcher) CooldownLen() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.cooldowns)
 }
 
 func (d *Dispatcher) passesSeverity(sev string) bool {

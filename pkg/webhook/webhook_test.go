@@ -183,3 +183,36 @@ func TestSeverityFiltering(t *testing.T) {
 	}
 }
 
+func TestWebhookBoundedCooldownCache(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	capacity := 50
+	cfg := Config{
+		Enabled:         true,
+		DiscordURL:      ts.URL,
+		MinSeverity:     "HIGH",
+		CooldownSeconds: 30,
+	}
+
+	dispatcher := NewDispatcherWithCapacity(cfg, capacity)
+	defer dispatcher.Close()
+
+	// Ingest 200 distinct IPs
+	for i := 0; i < 200; i++ {
+		alert := cbridge.Alert{
+			Timestamp: time.Now().UTC(),
+			Severity:  "HIGH",
+			AlertType: "PORT_SCAN_SYN",
+			SrcIP:     "10.0.0." + string(rune('0'+(i%10))) + string(rune('0'+((i/10)%10))),
+		}
+		_ = dispatcher.Dispatch(alert, false)
+	}
+
+	if dispatcher.CooldownLen() > capacity {
+		t.Errorf("expected cooldown cache len <= %d, got %d", capacity, dispatcher.CooldownLen())
+	}
+}
+
