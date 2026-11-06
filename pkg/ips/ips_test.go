@@ -1,6 +1,7 @@
 package ips
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -151,5 +152,48 @@ func TestIPSManagerConcurrentCleanup(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestIPSInactivePruning(t *testing.T) {
+	cfg := Config{
+		Enabled:            false, // no background goroutines needed for this unit test
+		Mode:               "simulate",
+		BanDurationSeconds: 100,
+	}
+	mgr := NewManagerWithCapacity(cfg, 10)
+
+	// Ban 10 hosts
+	for i := 0; i < 10; i++ {
+		ip := fmt.Sprintf("192.168.1.%d", 100+i)
+		mgr.Ban(ip, "test attack", "HIGH")
+	}
+
+	if mgr.TotalTracked() != 10 {
+		t.Fatalf("expected 10 tracked hosts, got %d", mgr.TotalTracked())
+	}
+
+	// Unban 4 of them
+	for i := 0; i < 4; i++ {
+		ip := fmt.Sprintf("192.168.1.%d", 100+i)
+		mgr.Unban(ip)
+	}
+
+	// Ban 3 new hosts - should trigger pruneInactiveLocked
+	for i := 0; i < 3; i++ {
+		ip := fmt.Sprintf("10.0.0.%d", 50+i)
+		mgr.Ban(ip, "new attack", "HIGH")
+	}
+
+	if mgr.TotalTracked() > 10 {
+		t.Errorf("expected total tracked hosts <= 10 after pruning inactive entries, got %d", mgr.TotalTracked())
+	}
+
+	// Verify the remaining active hosts are still present
+	for i := 0; i < 3; i++ {
+		ip := fmt.Sprintf("10.0.0.%d", 50+i)
+		if !mgr.IsBanned(ip) {
+			t.Errorf("expected newly banned host %s to be active", ip)
+		}
+	}
 }
 

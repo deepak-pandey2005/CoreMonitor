@@ -42,10 +42,13 @@ type BannedHost struct {
 	Active    bool
 }
 
+const DefaultMaxBannedHistory = 5000
+
 type Manager struct {
 	cfg            Config
 	mu             sync.RWMutex
 	banned         map[string]*BannedHost
+	maxHistory     int
 	whitelistIPs   map[string]bool
 	whitelistCIDRs []*net.IPNet
 	stopChan       chan struct{}
@@ -54,9 +57,17 @@ type Manager struct {
 }
 
 func NewManager(cfg Config) *Manager {
+	return NewManagerWithCapacity(cfg, DefaultMaxBannedHistory)
+}
+
+func NewManagerWithCapacity(cfg Config, maxHistory int) *Manager {
+	if maxHistory <= 0 {
+		maxHistory = DefaultMaxBannedHistory
+	}
 	m := &Manager{
 		cfg:            cfg,
 		banned:         make(map[string]*BannedHost),
+		maxHistory:     maxHistory,
 		whitelistIPs:   make(map[string]bool),
 		whitelistCIDRs: make([]*net.IPNet, 0),
 		stopChan:       make(chan struct{}),
@@ -140,6 +151,10 @@ func (m *Manager) Ban(ip, reason, severity string) bool {
 		return true
 	}
 
+	if m.maxHistory > 0 && len(m.banned) >= m.maxHistory {
+		m.pruneInactiveLocked()
+	}
+
 	m.banned[ip] = &BannedHost{
 		IP:        ip,
 		Reason:    reason,
@@ -204,6 +219,26 @@ func (m *Manager) GetBannedHosts() []BannedHost {
 		}
 	}
 	return res
+}
+
+func (m *Manager) TotalTracked() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.banned)
+}
+
+func (m *Manager) pruneInactiveLocked() {
+	if m.maxHistory <= 0 || len(m.banned) < m.maxHistory {
+		return
+	}
+	for ip, h := range m.banned {
+		if !h.Active {
+			delete(m.banned, ip)
+			if len(m.banned) < m.maxHistory {
+				return
+			}
+		}
+	}
 }
 
 func (m *Manager) ActionLog() <-chan string {
