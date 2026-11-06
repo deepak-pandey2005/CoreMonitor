@@ -389,6 +389,37 @@ void test_parse_tcp_malformed_doff() {
     printf("✓ test_parse_tcp_malformed_doff passed\n");
 }
 
+void test_parse_ipv4_non_first_fragment() {
+    uint8_t buffer[64] = {0};
+    struct ether_header *eth = (struct ether_header*)buffer;
+    eth->ether_type = htons(ETHERTYPE_IP);
+
+    struct iphdr *ip = (struct iphdr*)(buffer + sizeof(struct ether_header));
+    ip->ihl = 5;
+    ip->version = 4;
+    ip->protocol = IPPROTO_TCP;
+    // Non-zero fragment offset: e.g. offset = 64 (512 bytes)
+    ip->frag_off = htons(0x0040);
+    inet_pton(AF_INET, "192.168.1.50", &ip->saddr);
+    inet_pton(AF_INET, "192.168.1.1", &ip->daddr);
+
+    // Put some arbitrary bytes in payload that would look like ports if misinterpreted
+    buffer[sizeof(struct ether_header) + 20] = 0x1f;
+    buffer[sizeof(struct ether_header) + 21] = 0x90; // 8080
+    buffer[sizeof(struct ether_header) + 22] = 0x00;
+    buffer[sizeof(struct ether_header) + 23] = 0x50; // 80
+
+    cmonitor_packet_meta_t meta;
+    int res = cmonitor_parse_packet(buffer, sizeof(buffer), sizeof(buffer), 2000, 0, &meta);
+    assert(res == 0);
+    assert(strcmp(meta.protocol, "IPv4") == 0);
+    assert(meta.src_port == 0);
+    assert(meta.dst_port == 0);
+    assert(meta.payload_size == sizeof(buffer) - sizeof(struct ether_header) - 20);
+
+    printf("✓ test_parse_ipv4_non_first_fragment passed\n");
+}
+
 int main() {
     printf("Running C Core Parser Tests...\n");
     test_parse_tcp_syn();
@@ -400,6 +431,7 @@ int main() {
     test_parse_ipv6_tcp();
     test_parse_ipv4_malformed_ihl();
     test_parse_tcp_malformed_doff();
+    test_parse_ipv4_non_first_fragment();
     printf("All C Parser tests passed successfully!\n");
     return 0;
 }

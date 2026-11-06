@@ -387,7 +387,15 @@ int cmonitor_parse_packet(const uint8_t *data, uint32_t caplen, uint32_t len,
         size_t ip_hdr_len = (size_t)ip->ihl * 4;
         if (caplen < ip_offset + ip_hdr_len) return 0;
         size_t l4_offset = ip_offset + ip_hdr_len;
-        parse_l4_protocol(data, caplen, l4_offset, ip->protocol, out);
+
+        uint16_t frag_offset = ntohs(ip->frag_off) & 0x1FFF;
+        if (frag_offset == 0) {
+            parse_l4_protocol(data, caplen, l4_offset, ip->protocol, out);
+        } else {
+            if (caplen > l4_offset) {
+                out->payload_size = caplen - l4_offset;
+            }
+        }
     } else if (ether_type == ETHERTYPE_IPV6) {
         if (caplen < ip_offset + sizeof(struct ip6_hdr)) return 0;
         const struct ip6_hdr *ip6 = (const struct ip6_hdr*)(data + ip_offset);
