@@ -204,3 +204,36 @@ func TestSIEMSeverityFiltering(t *testing.T) {
 	}
 }
 
+func TestSIEMExporterTCPReconnectionBackoff(t *testing.T) {
+	// Point to unreachable localhost port
+	cfg := Config{
+		Enabled:     true,
+		Format:      "cef",
+		Transport:   "tcp",
+		Address:     "127.0.0.1:59999",
+		MinSeverity: "LOW",
+		QueueSize:   100,
+	}
+
+	start := time.Now()
+	exp := NewExporter(cfg)
+
+	// Send 10 messages while server is down
+	for i := 0; i < 10; i++ {
+		exp.SendRaw("test message")
+	}
+
+	// Close should drain quickly and not hang for 10 * 2s = 20s
+	exp.Close()
+	elapsed := time.Since(start)
+
+	if elapsed > 3*time.Second {
+		t.Errorf("expected TCP worker to process with backoff in under 3s, took %v", elapsed)
+	}
+
+	stats := exp.GetStats()
+	if stats.SendErrors == 0 {
+		t.Errorf("expected SendErrors > 0, got %d", stats.SendErrors)
+	}
+}
+

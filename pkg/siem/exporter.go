@@ -250,8 +250,11 @@ func (e *Exporter) runUDPWorker() {
 
 func (e *Exporter) runTCPWorker() {
 	var conn net.Conn
+	var lastConnectAttempt time.Time
+	reconnectBackoff := 2 * time.Second
 
 	connect := func() net.Conn {
+		lastConnectAttempt = time.Now()
 		c, err := net.DialTimeout("tcp", e.cfg.Address, 2*time.Second)
 		if err != nil {
 			atomic.AddUint64(&e.sendErrors, 1)
@@ -269,9 +272,12 @@ func (e *Exporter) runTCPWorker() {
 		select {
 		case msg := <-e.queue:
 			if conn == nil {
+				if time.Since(lastConnectAttempt) < reconnectBackoff {
+					atomic.AddUint64(&e.sendErrors, 1)
+					continue
+				}
 				conn = connect()
 				if conn == nil {
-					atomic.AddUint64(&e.sendErrors, 1)
 					continue
 				}
 			}
