@@ -228,6 +228,8 @@ type IDSConfig struct {
 	DNSTunnelLen       int
 	ICMPFloodThreshold int
 	ICMPFloodWindowSec int
+	UDPFloodThreshold  int
+	UDPFloodWindowSec  int
 }
 
 func DefaultIDSConfig() IDSConfig {
@@ -242,6 +244,8 @@ func DefaultIDSConfig() IDSConfig {
 		DNSTunnelLen:       60,
 		ICMPFloodThreshold: 50,
 		ICMPFloodWindowSec: 2,
+		UDPFloodThreshold:  100,
+		UDPFloodWindowSec:  2,
 	}
 }
 
@@ -268,6 +272,16 @@ func NewIDSEngine(cfg IDSConfig) *IDSEngine {
 		cCfg.icmp_flood_window_sec = 2
 	} else {
 		cCfg.icmp_flood_window_sec = C.int(cfg.ICMPFloodWindowSec)
+	}
+	if cfg.UDPFloodThreshold <= 0 {
+		cCfg.udp_flood_threshold = 100
+	} else {
+		cCfg.udp_flood_threshold = C.int(cfg.UDPFloodThreshold)
+	}
+	if cfg.UDPFloodWindowSec <= 0 {
+		cCfg.udp_flood_window_sec = 2
+	} else {
+		cCfg.udp_flood_window_sec = C.int(cfg.UDPFloodWindowSec)
 	}
 
 	handle := C.cmonitor_ids_init(&cCfg)

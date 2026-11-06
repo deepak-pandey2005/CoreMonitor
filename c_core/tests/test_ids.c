@@ -316,6 +316,41 @@ void test_ids_icmpv6_flood() {
     printf("✓ test_ids_icmpv6_flood passed\n");
 }
 
+void test_ids_udp_flood() {
+    cmonitor_ids_config_t cfg = cmonitor_ids_default_config();
+    cfg.udp_flood_threshold = 10;
+    cfg.udp_flood_window_sec = 2;
+    cmonitor_ids_t *ids = cmonitor_ids_init(&cfg);
+
+    cmonitor_alert_t alerts[8];
+    int triggered = 0;
+
+    for (int i = 0; i < 15; ++i) {
+        cmonitor_packet_meta_t pkt;
+        memset(&pkt, 0, sizeof(pkt));
+        pkt.ts_sec = 2000;
+        snprintf(pkt.src_ip, sizeof(pkt.src_ip), "192.168.1.200");
+        snprintf(pkt.dst_ip, sizeof(pkt.dst_ip), "192.168.1.1");
+        pkt.src_port = 50000 + i;
+        pkt.dst_port = 53;
+        snprintf(pkt.protocol, sizeof(pkt.protocol), "UDP");
+
+        int count = cmonitor_ids_analyze(ids, &pkt, alerts, 8);
+        for (int j = 0; j < count; ++j) {
+            if (strcmp(alerts[j].alert_type, "UDP_FLOOD") == 0) {
+                triggered = 1;
+                assert(strstr(alerts[j].message, "UDP flood detected") != NULL);
+                break;
+            }
+        }
+        if (triggered) break;
+    }
+    assert(triggered == 1);
+
+    cmonitor_ids_free(ids);
+    printf("✓ test_ids_udp_flood passed\n");
+}
+
 int main() {
     printf("Running C Core IDS Engine Tests...\n");
     test_ids_blacklisted_ip();
@@ -327,6 +362,7 @@ int main() {
     test_ids_arp_table_saturation();
     test_ids_cooldown_and_host_saturation();
     test_ids_icmpv6_flood();
+    test_ids_udp_flood();
     printf("All C IDS Engine tests passed successfully!\n");
     return 0;
 }

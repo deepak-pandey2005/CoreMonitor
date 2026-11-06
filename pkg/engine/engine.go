@@ -82,6 +82,8 @@ func NewEngine(cfg config.Config, capture *cbridge.Capture) (*Engine, error) {
 		DNSTunnelLen:       cfg.IDS.DNSTunnelAnomalyLength,
 		ICMPFloodThreshold: cfg.IDS.ICMPFloodThreshold,
 		ICMPFloodWindowSec: cfg.IDS.ICMPFloodWindowSeconds,
+		UDPFloodThreshold:  cfg.IDS.UDPFloodThreshold,
+		UDPFloodWindowSec:  cfg.IDS.UDPFloodWindowSeconds,
 	}
 
 	csvExp, err := storage.NewCSVExporter(cfg)

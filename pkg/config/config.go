@@ -49,6 +49,8 @@ type Config struct {
 		DNSTunnelAnomalyLength    int    `yaml:"dns_tunnel_anomaly_length"`
 		ICMPFloodThreshold        int    `yaml:"icmp_flood_threshold"`
 		ICMPFloodWindowSeconds    int    `yaml:"icmp_flood_window_seconds"`
+		UDPFloodThreshold         int    `yaml:"udp_flood_threshold"`
+		UDPFloodWindowSeconds     int    `yaml:"udp_flood_window_seconds"`
 	} `yaml:"ids"`
 
 	LiveDashboard bool `yaml:"live_dashboard"`
@@ -102,6 +104,8 @@ func DefaultConfig() *Config {
 	cfg.IDS.DNSTunnelAnomalyLength = 60
 	cfg.IDS.ICMPFloodThreshold = 50
 	cfg.IDS.ICMPFloodWindowSeconds = 2
+	cfg.IDS.UDPFloodThreshold = 100
+	cfg.IDS.UDPFloodWindowSeconds = 2
 
 	cfg.LiveDashboard = true
 	cfg.IPS = ips.DefaultConfig()
@@ -165,6 +169,9 @@ func (c *Config) Validate() error {
 		}
 		if c.IDS.ICMPFloodThreshold <= 0 || c.IDS.ICMPFloodWindowSeconds <= 0 {
 			return fmt.Errorf("ids.icmp_flood parameters must be > 0")
+		}
+		if c.IDS.UDPFloodThreshold <= 0 || c.IDS.UDPFloodWindowSeconds <= 0 {
+			return fmt.Errorf("ids.udp_flood parameters must be > 0")
 		}
 	}
 

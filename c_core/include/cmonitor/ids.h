@@ -35,6 +35,8 @@ typedef struct {
     size_t dns_tunnel_len;
     int icmp_flood_threshold;
     int icmp_flood_window_sec;
+    int udp_flood_threshold;
+    int udp_flood_window_sec;
 } cmonitor_ids_config_t;
 
 typedef struct cmonitor_ids cmonitor_ids_t;

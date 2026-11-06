@@ -7,6 +7,7 @@
 #define MAX_PORT_EVENTS   64
 #define MAX_SYN_EVENTS    128
 #define MAX_ICMP_EVENTS   64
+#define MAX_UDP_EVENTS    128
 #define MAX_BW_EVENTS     64
 #define MAX_COOLDOWNS     256
 #define MAX_ARP_ENTRIES   256
@@ -46,6 +47,11 @@ typedef struct {
     int64_t icmp_events[MAX_ICMP_EVENTS];
     int icmp_head;
     int icmp_count;
+
+    /* UDP flood tracking */
+    int64_t udp_events[MAX_UDP_EVENTS];
+    int udp_head;
+    int udp_count;
 
     /* Bandwidth tracking */
     bw_event_t bw_events[MAX_BW_EVENTS];
@@ -112,6 +118,8 @@ cmonitor_ids_config_t cmonitor_ids_default_config(void) {
     cfg.dns_tunnel_len = 60;
     cfg.icmp_flood_threshold = 50;
     cfg.icmp_flood_window_sec = 2;
+    cfg.udp_flood_threshold = 100;
+    cfg.udp_flood_window_sec = 2;
     return cfg;
 }
 
@@ -448,6 +456,32 @@ int cmonitor_ids_analyze(cmonitor_ids_t *ids, const cmonitor_packet_meta_t *meta
                          meta->protocol, meta->src_ip, active_icmps, win_sec);
                 add_alert(out_alerts, &alert_count, max_alerts, meta, CMONITOR_SEV_HIGH,
                           "ICMP_FLOOD", msg, "flood=ICMP");
+            }
+        }
+    }
+
+    /* 7. UDP Flood */
+    if (strcmp(meta->protocol, "UDP") == 0) {
+        int u_slot = tracker->udp_head;
+        tracker->udp_events[u_slot] = now_sec;
+        tracker->udp_head = (u_slot + 1) % MAX_UDP_EVENTS;
+        if (tracker->udp_count < MAX_UDP_EVENTS) tracker->udp_count++;
+
+        int win_sec = ids->cfg.udp_flood_window_sec > 0 ? ids->cfg.udp_flood_window_sec : 2;
+        int64_t udp_cutoff = now_sec - win_sec;
+        int active_udps = 0;
+        for (int i = 0; i < tracker->udp_count; ++i) {
+            if (tracker->udp_events[i] >= udp_cutoff) active_udps++;
+        }
+
+        int thresh = ids->cfg.udp_flood_threshold > 0 ? ids->cfg.udp_flood_threshold : 100;
+        if (active_udps >= thresh) {
+            if (!should_suppress(ids, "UDP_FLOOD", meta->src_ip, now_sec)) {
+                char msg[256];
+                snprintf(msg, sizeof(msg), "UDP flood detected from %s (%d packets in %ds)",
+                         meta->src_ip, active_udps, win_sec);
+                add_alert(out_alerts, &alert_count, max_alerts, meta, CMONITOR_SEV_HIGH,
+                          "UDP_FLOOD", msg, "flood=UDP");
             }
         }
     }
