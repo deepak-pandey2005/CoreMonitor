@@ -105,6 +105,8 @@ func TestPrometheusMetricsServer(t *testing.T) {
 		"coremonitor_ips_banned_hosts",
 		"coremonitor_active_flows",
 		"coremonitor_flows_total",
+		"coremonitor_flow_volume_bytes_total",
+		"coremonitor_closed_flows_total",
 	}
 
 	for _, metric := range expectedMetrics {

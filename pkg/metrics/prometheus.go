@@ -191,6 +191,14 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	b.WriteString("# TYPE coremonitor_flows_total counter\n")
 	b.WriteString(fmt.Sprintf("coremonitor_flows_total %d\n\n", stats.FlowStats.TotalFlowsCreated))
 
+	b.WriteString("# HELP coremonitor_flow_volume_bytes_total Total volume in bytes across all conversation flows\n")
+	b.WriteString("# TYPE coremonitor_flow_volume_bytes_total counter\n")
+	b.WriteString(fmt.Sprintf("coremonitor_flow_volume_bytes_total %d\n\n", stats.FlowStats.TotalVolumeBytes))
+
+	b.WriteString("# HELP coremonitor_closed_flows_total Total closed or timed-out conversation flows\n")
+	b.WriteString("# TYPE coremonitor_closed_flows_total counter\n")
+	b.WriteString(fmt.Sprintf("coremonitor_closed_flows_total %d\n\n", stats.FlowStats.ClosedFlows))
+
 	// SIEM Exporter Metrics
 	b.WriteString("# HELP coremonitor_siem_events_total Total SIEM CEF and Syslog events processed\n")
 	b.WriteString("# TYPE coremonitor_siem_events_total counter\n")
