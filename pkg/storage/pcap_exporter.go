@@ -25,6 +25,10 @@ func NewPCAPExporter(cfg config.Config) (*PCAPExporter, error) {
 		return &PCAPExporter{cfg: cfg}, nil
 	}
 
+	if cfg.Storage.PCAPRotateSeconds <= 0 {
+		cfg.Storage.PCAPRotateSeconds = 3600
+	}
+
 	if err := os.MkdirAll(cfg.Storage.PCAPDir, 0755); err != nil {
 		return nil, err
 	}
@@ -37,8 +41,12 @@ func NewPCAPExporter(cfg config.Config) (*PCAPExporter, error) {
 }
 
 func (exp *PCAPExporter) rotateFiles() error {
+	rotSec := exp.cfg.Storage.PCAPRotateSeconds
+	if rotSec <= 0 {
+		rotSec = 3600
+	}
 	now := time.Now().UTC()
-	if exp.file != nil && now.Sub(exp.lastRotation) < time.Duration(exp.cfg.Storage.PCAPRotateSeconds)*time.Second {
+	if exp.file != nil && now.Sub(exp.lastRotation) < time.Duration(rotSec)*time.Second {
 		return nil
 	}
 
@@ -53,6 +61,10 @@ func (exp *PCAPExporter) rotateFiles() error {
 
 	tsStr := now.Format("20060102_150405")
 	pcapPath := filepath.Join(exp.cfg.Storage.PCAPDir, fmt.Sprintf("traffic_%s.pcap", tsStr))
+	if fileExists(pcapPath) {
+		tsStr = now.Format("20060102_150405_000000")
+		pcapPath = filepath.Join(exp.cfg.Storage.PCAPDir, fmt.Sprintf("traffic_%s.pcap", tsStr))
+	}
 
 	f, err := os.OpenFile(pcapPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {

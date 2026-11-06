@@ -29,6 +29,10 @@ func NewCSVExporter(cfg config.Config) (*CSVExporter, error) {
 		return &CSVExporter{cfg: cfg}, nil
 	}
 
+	if cfg.Storage.CSVRotateSeconds <= 0 {
+		cfg.Storage.CSVRotateSeconds = 3600
+	}
+
 	if err := os.MkdirAll(cfg.Storage.CSVDir, 0755); err != nil {
 		return nil, err
 	}
@@ -41,8 +45,12 @@ func NewCSVExporter(cfg config.Config) (*CSVExporter, error) {
 }
 
 func (exp *CSVExporter) rotateFiles() error {
+	rotSec := exp.cfg.Storage.CSVRotateSeconds
+	if rotSec <= 0 {
+		rotSec = 3600
+	}
 	now := time.Now().UTC()
-	if exp.pktFile != nil && now.Sub(exp.lastRotation) < time.Duration(exp.cfg.Storage.CSVRotateSeconds)*time.Second {
+	if exp.pktFile != nil && now.Sub(exp.lastRotation) < time.Duration(rotSec)*time.Second {
 		return nil
 	}
 

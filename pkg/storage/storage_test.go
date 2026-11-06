@@ -162,3 +162,43 @@ func TestInfluxExporterSafeLifecycle(t *testing.T) {
 	exp.Close()
 	exp.Close()
 }
+
+func TestPCAPSubSecondCollisionAndRotationDefaults(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "pcap_collision_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	cfg := *config.DefaultConfig()
+	cfg.Storage.PCAPDir = tempDir
+	cfg.Storage.PCAPRotateSeconds = -5 // Non-positive interval should default safely
+
+	exp, err := NewPCAPExporter(cfg)
+	if err != nil {
+		t.Fatalf("failed to create PCAP exporter: %v", err)
+	}
+	defer exp.Close()
+
+	if exp.cfg.Storage.PCAPRotateSeconds <= 0 {
+		t.Errorf("expected PCAPRotateSeconds to be defaulted to positive value")
+	}
+
+	rawPkt := make([]byte, 80)
+	now := time.Now().UTC()
+	exp.WriteRawPacket(now, rawPkt, 80)
+
+	// Force file rotation within the same second
+	exp.lastRotation = time.Time{}
+	_ = exp.rotateFiles()
+	exp.WriteRawPacket(now, rawPkt, 80)
+	exp.Close()
+
+	entries, err := os.ReadDir(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) < 2 {
+		t.Errorf("expected at least 2 distinct PCAP files after sub-second rotation, got %d", len(entries))
+	}
+}
