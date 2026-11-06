@@ -311,8 +311,8 @@ int cmonitor_ids_analyze(cmonitor_ids_t *ids, const cmonitor_packet_meta_t *meta
 
         int found_idx = -1;
         int empty_idx = -1;
-        int oldest_idx = 0;
-        int64_t oldest_ts = ids->arp_table[0].last_seen_sec;
+        int oldest_idx = -1;
+        int64_t oldest_ts = 0;
 
         for (int i = 0; i < MAX_ARP_ENTRIES; i++) {
             if (ids->arp_table[i].in_use) {
@@ -320,7 +320,7 @@ int cmonitor_ids_analyze(cmonitor_ids_t *ids, const cmonitor_packet_meta_t *meta
                     found_idx = i;
                     break;
                 }
-                if (ids->arp_table[i].last_seen_sec < oldest_ts) {
+                if (oldest_idx == -1 || ids->arp_table[i].last_seen_sec < oldest_ts) {
                     oldest_ts = ids->arp_table[i].last_seen_sec;
                     oldest_idx = i;
                 }
@@ -330,7 +330,7 @@ int cmonitor_ids_analyze(cmonitor_ids_t *ids, const cmonitor_packet_meta_t *meta
         }
 
         if (found_idx == -1) {
-            int target_idx = (empty_idx != -1) ? empty_idx : oldest_idx;
+            int target_idx = (empty_idx != -1) ? empty_idx : (oldest_idx != -1 ? oldest_idx : 0);
             snprintf(ids->arp_table[target_idx].ip, sizeof(ids->arp_table[target_idx].ip), "%s", meta->src_ip);
             snprintf(ids->arp_table[target_idx].mac, sizeof(ids->arp_table[target_idx].mac), "%s", meta->src_mac);
             ids->arp_table[target_idx].last_seen_sec = now_sec;

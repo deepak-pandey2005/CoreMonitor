@@ -231,6 +231,59 @@ void test_ids_arp_table_saturation() {
     printf("✓ test_ids_arp_table_saturation passed\n");
 }
 
+void test_ids_arp_table_lru_order() {
+    cmonitor_ids_config_t cfg = cmonitor_ids_default_config();
+    cmonitor_ids_t *ids = cmonitor_ids_init(&cfg);
+    cmonitor_alert_t alerts[8];
+
+    // Slot 0 has a very recent timestamp (5000)
+    cmonitor_packet_meta_t pkt0;
+    memset(&pkt0, 0, sizeof(pkt0));
+    pkt0.ts_sec = 5000;
+    snprintf(pkt0.protocol, sizeof(pkt0.protocol), "ARP");
+    snprintf(pkt0.src_ip, sizeof(pkt0.src_ip), "10.0.0.1");
+    snprintf(pkt0.src_mac, sizeof(pkt0.src_mac), "00:00:00:00:00:01");
+    pkt0.arp_opcode = 1;
+    cmonitor_ids_analyze(ids, &pkt0, alerts, 8);
+
+    // Slots 1 to 255 filled, with slot 1 having oldest ts=101
+    for (int i = 1; i < 256; ++i) {
+        cmonitor_packet_meta_t pkt;
+        memset(&pkt, 0, sizeof(pkt));
+        pkt.ts_sec = 100 + i;
+        snprintf(pkt.protocol, sizeof(pkt.protocol), "ARP");
+        snprintf(pkt.src_ip, sizeof(pkt.src_ip), "10.1.%d.%d", (i >> 8) & 0xff, i & 0xff);
+        snprintf(pkt.src_mac, sizeof(pkt.src_mac), "00:11:22:33:%02x:%02x", (i >> 8) & 0xff, i & 0xff);
+        pkt.arp_opcode = 1;
+        cmonitor_ids_analyze(ids, &pkt, alerts, 8);
+    }
+
+    // Now insert a 257th host with ts=6000 - should evict slot 1 (10.1.0.1 with ts=101), NOT slot 0
+    cmonitor_packet_meta_t pkt_new;
+    memset(&pkt_new, 0, sizeof(pkt_new));
+    pkt_new.ts_sec = 6000;
+    snprintf(pkt_new.protocol, sizeof(pkt_new.protocol), "ARP");
+    snprintf(pkt_new.src_ip, sizeof(pkt_new.src_ip), "10.2.0.99");
+    snprintf(pkt_new.src_mac, sizeof(pkt_new.src_mac), "aa:bb:cc:dd:ee:99");
+    pkt_new.arp_opcode = 1;
+    cmonitor_ids_analyze(ids, &pkt_new, alerts, 8);
+
+    // Verify 10.0.0.1 (slot 0) was NOT evicted by sending spoofed MAC for 10.0.0.1
+    cmonitor_packet_meta_t pkt_spoof;
+    memset(&pkt_spoof, 0, sizeof(pkt_spoof));
+    pkt_spoof.ts_sec = 6001;
+    snprintf(pkt_spoof.protocol, sizeof(pkt_spoof.protocol), "ARP");
+    snprintf(pkt_spoof.src_ip, sizeof(pkt_spoof.src_ip), "10.0.0.1");
+    snprintf(pkt_spoof.src_mac, sizeof(pkt_spoof.src_mac), "ff:ff:ee:dd:cc:bb");
+    pkt_spoof.arp_opcode = 2;
+    int c = cmonitor_ids_analyze(ids, &pkt_spoof, alerts, 8);
+    assert(c == 1);
+    assert(strcmp(alerts[0].alert_type, "ARP_SPOOFING") == 0);
+
+    cmonitor_ids_free(ids);
+    printf("✓ test_ids_arp_table_lru_order passed\n");
+}
+
 void test_ids_cooldown_and_host_saturation() {
     cmonitor_ids_config_t cfg = cmonitor_ids_default_config();
     cmonitor_ids_t *ids = cmonitor_ids_init(&cfg);
@@ -360,6 +413,7 @@ int main() {
     test_ids_dns_tunneling();
     test_ids_arp_spoofing();
     test_ids_arp_table_saturation();
+    test_ids_arp_table_lru_order();
     test_ids_cooldown_and_host_saturation();
     test_ids_icmpv6_flood();
     test_ids_udp_flood();
