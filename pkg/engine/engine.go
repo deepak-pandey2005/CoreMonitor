@@ -431,6 +431,13 @@ func (e *Engine) GetFlowManager() *flow.Manager {
 	return e.flowMgr
 }
 
+func (e *Engine) GetClosedFlows() []*flow.Flow {
+	if e.flowMgr == nil {
+		return nil
+	}
+	return e.flowMgr.GetClosedFlows()
+}
+
 func (e *Engine) GetSIEMExporter() *siem.Exporter {
 	return e.siemExp
 }

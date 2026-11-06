@@ -252,3 +252,51 @@ func TestFlowReplayTimelineAndCapacity(t *testing.T) {
 	}
 }
 
+func TestGetClosedFlows(t *testing.T) {
+	mgr := NewManager(10*time.Second, 60*time.Second)
+	defer mgr.Close()
+
+	now := time.Now()
+	p1 := &cbridge.PacketMeta{
+		Timestamp:  now,
+		Protocol:   "TCP",
+		SrcIP:      "192.168.1.10",
+		DstIP:      "192.168.1.20",
+		SrcPort:    1234,
+		DstPort:    80,
+		PacketSize: 100,
+	}
+	mgr.Ingest(p1)
+
+	// Send RST to close the connection
+	pRST := &cbridge.PacketMeta{
+		Timestamp:  now.Add(1 * time.Second),
+		Protocol:   "TCP",
+		SrcIP:      "192.168.1.20",
+		DstIP:      "192.168.1.10",
+		SrcPort:    80,
+		DstPort:    1234,
+		PacketSize: 40,
+		TCPFlags:   0x04, // RST
+	}
+	mgr.Ingest(pRST)
+
+	// Sweep closed flows to move to closed history
+	mgr.Sweep(now.Add(2 * time.Second))
+
+	closed := mgr.GetClosedFlows()
+	if len(closed) != 1 {
+		t.Fatalf("expected 1 closed flow, got %d", len(closed))
+	}
+	if closed[0].State != "CLOSED" {
+		t.Errorf("expected closed flow state CLOSED, got %s", closed[0].State)
+	}
+
+	// Verify returned flow is a copy
+	closed[0].State = "MUTATED"
+	closedAgain := mgr.GetClosedFlows()
+	if closedAgain[0].State == "MUTATED" {
+		t.Errorf("expected GetClosedFlows to return independent copies")
+	}
+}
+

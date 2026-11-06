@@ -256,6 +256,19 @@ func (m *Manager) GetActiveFlows() []*Flow {
 	return result
 }
 
+// GetClosedFlows returns a snapshot slice of historically closed and timed out flows.
+func (m *Manager) GetClosedFlows() []*Flow {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make([]*Flow, 0, len(m.closedHistory))
+	for _, f := range m.closedHistory {
+		cp := *f
+		result = append(result, &cp)
+	}
+	return result
+}
+
 // GetTopFlows returns the top N active flows ranked by TotalBytes descending.
 func (m *Manager) GetTopFlows(limit int) []*Flow {
 	flows := m.GetActiveFlows()
