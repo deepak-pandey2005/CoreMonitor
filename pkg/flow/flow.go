@@ -112,6 +112,7 @@ type Manager struct {
 	maxFlows      int
 	lastPktTime   time.Time
 	stopChan      chan struct{}
+	closeOnce     sync.Once
 }
 
 // NewManager creates a flow manager and runs a background janitor.
@@ -397,13 +398,10 @@ func FormatFlowSummary(f *Flow) string {
 		f.TotalBytes, dur, extra)
 }
 
-// Close stops the background janitor.
+// Close stops the background janitor safely and idempotently.
 func (m *Manager) Close() {
-	select {
-	case <-m.stopChan:
-		return
-	default:
+	m.closeOnce.Do(func() {
 		close(m.stopChan)
-	}
+	})
 }
 

@@ -1,6 +1,7 @@
 package ips
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -132,5 +133,23 @@ func TestIPSCIDRWhitelistAndIPv6(t *testing.T) {
 	if mgr.IsBanned(ipv6Target) {
 		t.Errorf("expected %s to no longer be banned", ipv6Target)
 	}
+}
+
+func TestIPSManagerConcurrentCleanup(t *testing.T) {
+	cfg := Config{
+		Enabled: true,
+		Mode:    "simulate",
+	}
+	mgr := NewManager(cfg)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mgr.Cleanup()
+		}()
+	}
+	wg.Wait()
 }
 

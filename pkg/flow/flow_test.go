@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -298,5 +299,18 @@ func TestGetClosedFlows(t *testing.T) {
 	if closedAgain[0].State == "MUTATED" {
 		t.Errorf("expected GetClosedFlows to return independent copies")
 	}
+}
+
+func TestFlowManagerConcurrentClose(t *testing.T) {
+	mgr := NewManager(10*time.Second, 60*time.Second)
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mgr.Close()
+		}()
+	}
+	wg.Wait()
 }
 

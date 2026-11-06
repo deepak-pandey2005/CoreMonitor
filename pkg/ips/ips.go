@@ -49,6 +49,7 @@ type Manager struct {
 	whitelistIPs   map[string]bool
 	whitelistCIDRs []*net.IPNet
 	stopChan       chan struct{}
+	closeOnce      sync.Once
 	actionChan     chan string
 }
 
@@ -248,7 +249,9 @@ func (m *Manager) execFirewall(ip string, args ...string) {
 
 func (m *Manager) Cleanup() {
 	if m.cfg.Enabled {
-		close(m.stopChan)
+		m.closeOnce.Do(func() {
+			close(m.stopChan)
+		})
 	}
 
 	m.mu.Lock()
