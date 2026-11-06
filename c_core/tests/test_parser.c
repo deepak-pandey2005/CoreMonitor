@@ -359,6 +359,36 @@ void test_parse_ipv4_malformed_ihl() {
     printf("✓ test_parse_ipv4_malformed_ihl passed\n");
 }
 
+void test_parse_tcp_malformed_doff() {
+    uint8_t buffer[64] = {0};
+    struct ether_header *eth = (struct ether_header*)buffer;
+    eth->ether_type = htons(ETHERTYPE_IP);
+
+    struct iphdr *ip = (struct iphdr*)(buffer + sizeof(struct ether_header));
+    ip->ihl = 5;
+    ip->version = 4;
+    ip->protocol = IPPROTO_TCP;
+    inet_pton(AF_INET, "10.0.0.1", &ip->saddr);
+    inet_pton(AF_INET, "10.0.0.2", &ip->daddr);
+
+    struct tcphdr *tcp = (struct tcphdr*)(buffer + sizeof(struct ether_header) + 20);
+    tcp->source = htons(12345);
+    tcp->dest = htons(80);
+    // Malformed doff < 5
+    tcp->doff = 2;
+
+    cmonitor_packet_meta_t meta;
+    int res = cmonitor_parse_packet(buffer, sizeof(buffer), sizeof(buffer), 1000, 0, &meta);
+    assert(res == 0);
+    assert(strcmp(meta.protocol, "TCP") == 0);
+    assert(meta.src_port == 12345);
+    assert(meta.dst_port == 80);
+    assert(meta.payload_size == 0);
+    assert(meta.service[0] != '\0'); // service assigned from port 80
+
+    printf("✓ test_parse_tcp_malformed_doff passed\n");
+}
+
 int main() {
     printf("Running C Core Parser Tests...\n");
     test_parse_tcp_syn();
@@ -369,6 +399,7 @@ int main() {
     test_parse_8021q_vlan();
     test_parse_ipv6_tcp();
     test_parse_ipv4_malformed_ihl();
+    test_parse_tcp_malformed_doff();
     printf("All C Parser tests passed successfully!\n");
     return 0;
 }

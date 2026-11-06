@@ -272,7 +272,9 @@ static void parse_l4_protocol(const uint8_t *data, uint32_t caplen, size_t l4_of
             }
             snprintf(out->tcp_flags_str, sizeof(out->tcp_flags_str), "%s", flag_str);
 
-            size_t tcp_hdr_len = tcp->doff * 4;
+            if (tcp->doff < 5) return;
+            size_t tcp_hdr_len = (size_t)tcp->doff * 4;
+            if (caplen < l4_offset + tcp_hdr_len) return;
             size_t payload_offset = l4_offset + tcp_hdr_len;
             if (caplen > payload_offset) {
                 out->payload_size = caplen - payload_offset;
